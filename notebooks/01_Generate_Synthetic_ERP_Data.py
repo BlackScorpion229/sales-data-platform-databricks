@@ -3,19 +3,20 @@
 # MAGIC # 01 — Generate Synthetic ERP Data
 # MAGIC
 # MAGIC **Purpose:** Simulates the source systems (ERP + transactions) by writing
-# MAGIC realistic CSV exports to the DBFS landing zone. Includes **deliberate
+# MAGIC realistic exports to the DBFS landing zone — CSV for most files, JSON for
+# MAGIC `erp/region` (multi-format ingestion demo). Includes **deliberate
 # MAGIC data-quality issues** so the Bronze → Silver pipeline has real work to do.
 # MAGIC
 # MAGIC **Generated datasets:**
-# MAGIC | File | Rows | Purpose |
-# MAGIC |------|------|---------|
-# MAGIC | `erp/region/` | ~15 | Sales regions (dimension source) |
-# MAGIC | `erp/sales_rep/` | ~60 | Sales representatives (dimension source) |
-# MAGIC | `erp/currency/` | ~6 | FX rates for currency standardization |
-# MAGIC | `erp/customer/` | ~1,500 | Customer master (with ~10 new customers for demo) |
-# MAGIC | `erp/customer_updates/` | ~35 | Changed + new customer records (SCD2 demo) |
-# MAGIC | `erp/product/` | ~360 | Product master |
-# MAGIC | `transactions/dt=YYYY-MM-DD/` | ~270K lines | Daily order line items, 24 months |
+# MAGIC | File | Format | Rows | Purpose |
+# MAGIC |------|--------|------|---------|
+# MAGIC | `erp/region/` | JSON | ~15 | Sales regions (dimension source) |
+# MAGIC | `erp/sales_rep/` | CSV | ~60 | Sales representatives (dimension source) |
+# MAGIC | `erp/currency/` | CSV | ~6 | FX rates for currency standardization |
+# MAGIC | `erp/customer/` | CSV | ~1,500 | Customer master (with ~10 new customers for demo) |
+# MAGIC | `erp/customer_updates/` | CSV | ~35 | Changed + new customer records (SCD2 demo) |
+# MAGIC | `erp/product/` | CSV | ~360 | Product master |
+# MAGIC | `transactions/dt=YYYY-MM-DD/` | CSV | ~270K lines | Daily order line items, 24 months |
 # MAGIC | `orders/` | ~95K | Order headers (join to lines) |
 # MAGIC
 # MAGIC **Deliberate DQ issues injected** (deterministic — seeded RNG) — the raw
@@ -493,7 +494,9 @@ print(f"Customer updates: {len(customer_updates)} ({len(changed)} changed, 10 ne
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 6. Write everything to the landing zone as CSV (ERP exports)
+# MAGIC ## 6. Write everything to the landing zone — CSV ERP exports + one JSON file
+# MAGIC Most exports are CSV (realistic for ERP), but `erp/region` is written as
+# MAGIC JSON to demonstrate multi-format ingestion in the Bronze layer.
 
 # COMMAND ----------
 
@@ -515,11 +518,16 @@ def write_csv(rows, cols, path):
     df.coalesce(1).write.mode("overwrite").option("header", True).csv(path)
     return df.count()
 
+def write_json(rows, path):
+    df = spark.createDataFrame(rows)
+    df.coalesce(1).write.mode("overwrite").json(path)
+    return df.count()
+
 n_cust   = write_csv(customers,        CUST_COLS, "/FileStore/raw_data/erp/customer")
 n_prod   = write_csv(products,         PROD_COLS, "/FileStore/raw_data/erp/product")
 n_ord    = write_csv(orders,           ORD_COLS,  "/FileStore/raw_data/orders")
 n_upd    = write_csv(customer_updates, CUST_COLS, "/FileStore/raw_data/erp/customer_updates")
-n_reg    = write_csv(REGIONS,          ["region_id", "region_name", "country", "state", "territory"], "/FileStore/raw_data/erp/region")
+n_reg    = write_json(REGIONS, "/FileStore/raw_data/erp/region")
 n_rep    = write_csv(sales_reps,       ["sales_rep_id", "sales_rep_name", "region_id", "sales_rep_email", "hire_date", "status"], "/FileStore/raw_data/erp/sales_rep")
 n_cur    = write_csv(CURRENCIES,       ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date"], "/FileStore/raw_data/erp/currency")
 

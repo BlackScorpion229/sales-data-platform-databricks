@@ -78,8 +78,9 @@ python -m pytest tests -q     # 15 tests: config, DQ registry, thresholds
 ## Run order (one-time setup)
 
 1. `00_Setup_Workspace` — creates `bronze`/`silver`/`gold` schemas + DBFS landing zone
-2. `01_Generate_Synthetic_ERP_Data` — writes realistic CSV "ERP exports" (with
-   deliberate DQ issues) to `/FileStore/raw_data`
+2. `01_Generate_Synthetic_ERP_Data` — writes realistic ERP exports to
+   `/FileStore/raw_data` (CSV files plus `erp/region` as JSON — deliberate
+   multi-format landing zone, with DQ issues)
 3. `02_Ingest_Bronze` → 4. `03_Silver_Cleansing` → 5. `04_Gold_Dimensions`
 4. `05_Gold_Fact_Sales` → 6. `06_Data_Quality_Audit` → 7. `07_Aggregates`
 5. `08_Analysis_Revenue` + `09_Analysis_Customers` — visualizations

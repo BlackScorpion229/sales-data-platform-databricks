@@ -41,15 +41,15 @@ from datetime import datetime
 BATCH_ID = f"BATCH_{datetime.now():%Y%m%d_%H%M%S}"
 SOURCE_SYSTEM = "ERP"
 
-# (source folder, target table, checkpoint) for each dataset
+# (source folder, target table, checkpoint, format) for each dataset
 INGESTIONS = [
-    (RAW_CUSTOMER, TABLES["bronze_customer"],  f"{CHECKPOINT_BASE}/customer"),
-    (RAW_PRODUCT,  TABLES["bronze_product"],   f"{CHECKPOINT_BASE}/product"),
-    (f"{RAW_BASE}/orders", TABLES["bronze_order"], f"{CHECKPOINT_BASE}/order"),
-    (RAW_TRANSACT, TABLES["bronze_transaction"], f"{CHECKPOINT_BASE}/transaction"),
-    (f"{RAW_BASE}/erp/region",    "bronze.erp_region",    f"{CHECKPOINT_BASE}/region"),
-    (f"{RAW_BASE}/erp/sales_rep", "bronze.erp_sales_rep", f"{CHECKPOINT_BASE}/sales_rep"),
-    (f"{RAW_BASE}/erp/currency",  "bronze.erp_currency",  f"{CHECKPOINT_BASE}/currency"),
+    (RAW_CUSTOMER, TABLES["bronze_customer"],  f"{CHECKPOINT_BASE}/customer", "csv"),
+    (RAW_PRODUCT,  TABLES["bronze_product"],   f"{CHECKPOINT_BASE}/product", "csv"),
+    (f"{RAW_BASE}/orders", TABLES["bronze_order"], f"{CHECKPOINT_BASE}/order", "csv"),
+    (RAW_TRANSACT, TABLES["bronze_transaction"], f"{CHECKPOINT_BASE}/transaction", "csv"),
+    (f"{RAW_BASE}/erp/region",    "bronze.erp_region",    f"{CHECKPOINT_BASE}/region", "json"),
+    (f"{RAW_BASE}/erp/sales_rep", "bronze.erp_sales_rep", f"{CHECKPOINT_BASE}/sales_rep", "csv"),
+    (f"{RAW_BASE}/erp/currency",  "bronze.erp_currency",  f"{CHECKPOINT_BASE}/currency", "csv"),
 ]
 
 # COMMAND ----------
@@ -57,27 +57,29 @@ INGESTIONS = [
 # MAGIC %md
 # MAGIC ## 2. Generic ingest function
 # MAGIC One reusable function ingests every dataset — the same pattern you would
-# MAGIC deploy for N source systems with zero extra code.
+# MAGIC deploy for N source systems with zero extra code. A `fmt` parameter
+# MAGIC handles mixed source formats: CSV everywhere except `erp/region`, which
+# MAGIC arrives as JSON.
 
 # COMMAND ----------
 
 from pyspark.sql import functions as F
 
-def ingest_to_bronze(source_path, target_table, checkpoint_path, use_autoloader=USE_AUTO_LOADER):
+def ingest_to_bronze(source_path, target_table, checkpoint_path, fmt="csv", use_autoloader=USE_AUTO_LOADER):
     """Incremental file ingestion into a bronze Delta table with audit columns."""
     data_cols = None
     if use_autoloader:
         try:
-            stream = (
+            stream_reader = (
                 spark.readStream
                 .format("cloudFiles")
-                .option("cloudFiles.format", "csv")
-                .option("header", "true")
-                .option("inferSchema", "true")
+                .option("cloudFiles.format", fmt)
                 .option("cloudFiles.schemaLocation", checkpoint_path)          # schema evolution state
                 .option("cloudFiles.schemaEvolutionMode", "addNewColumns")     # accept new source columns
-                .load(source_path)
             )
+            if fmt == "csv":
+                stream_reader = stream_reader.option("header", "true").option("inferSchema", "true")
+            stream = stream_reader.load(source_path)
             data_cols = [c for c in stream.columns if not c.startswith("_")]
         except Exception as e:
             print(f"  [!] Auto Loader unavailable ({e}) — falling back to batch read")
@@ -101,7 +103,10 @@ def ingest_to_bronze(source_path, target_table, checkpoint_path, use_autoloader=
         query.awaitTermination()
         mode = "AUTO LOADER (streaming)"
     else:
-        raw = spark.read.csv(source_path, header=True, inferSchema=True)
+        if fmt == "csv":
+            raw = spark.read.csv(source_path, header=True, inferSchema=True)
+        else:
+            raw = spark.read.format(fmt).load(source_path)
         audit = (
             raw
             .withColumn("_ingestion_timestamp", F.current_timestamp())
@@ -123,9 +128,9 @@ def ingest_to_bronze(source_path, target_table, checkpoint_path, use_autoloader=
 
 # COMMAND ----------
 
-for src, tgt, ckpt in INGESTIONS:
-    print(f"> Ingesting {src}")
-    ingest_to_bronze(src, tgt, ckpt)
+for src, tgt, ckpt, fmt in INGESTIONS:
+    print(f"> Ingesting {src} ({fmt})")
+    ingest_to_bronze(src, tgt, ckpt, fmt=fmt)
 
 print("\nBatch ID:", BATCH_ID)
 
