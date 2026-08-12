@@ -127,3 +127,126 @@ Along the way several real bugs were found and fixed during review: MERGE target
 **User:** ok good, now can you create a "knk.md" file with this full conversation (without the code) and should include my questions and your responses. make it formatted as markdown file.
 
 **Assistant:** Created `knk.md` — this document.
+
+---
+
+## 9. Project status recap
+
+**User:** What did we do so far?
+
+**Assistant:** Recapped the full project state: goal (Community Edition Databricks portfolio platform), constraints (no UC → hive_metastore, notebook style, synthetic data, raw data genuinely dirty), progress (11 notebooks 00–10, `src/sales_platform` package, 15 passing tests, DAB config, docs, two git commits `edd0317` and `a36799a`), key design decisions (disjoint-slice deterministic dirt injection, normalize-then-validate, SCD2 engine, quarantine as-received records), and next steps (first run on CE).
+
+---
+
+## 10. Git — everything into the repo
+
+**User:** before that should i need to do anything from git, because i want each and everything i do in this project will go to git repo
+
+**Assistant:** Checked the repo: 2 commits already made, only the conversation log (`knk.md`) uncommitted, no GitHub remote configured. Explained local git was already set up, and proposed: (1) commit the pending file, (2) add a GitHub remote (manually created repo or `gh` CLI — asked which), and (3) documented the key caveat that **Community Edition has no Git integration** (Git Folders is a paid-workspace feature), so the workflow is: this repo is the single source of truth → import notebooks into CE → if notebooks are edited inside Databricks, export them as Source (`File → Export → Source`) and commit locally. Also offered to add a "version control workflow" section to GUIDE.md — was not explicitly requested.
+
+---
+
+## 11. Landing zone is CSV-only
+
+**User:** ok, done and its ready in databricks, now just check "6. Write everything to the landing zone as CSV (ERP exports)" all the files generated are only csv? or are there any other file formats like json, parquet?
+
+**Assistant:** Verified section 6 of notebook 01: **everything in the landing zone is CSV only** — all 8 datasets written via `.csv()` (region/sales_rep/currency/customer/product/customer_updates/orders/transactions-daily). No JSON, no Parquet at this stage; Parquet/Delta only appears downstream in the Bronze/Silver/Gold Delta tables. Confirmed the constant paths under `/FileStore/raw_data/**`.
+
+---
+
+## 12. Region as JSON
+
+**User:** no need of Parquet files here ok but atleast check is it possible to use json file here. check for erp/region data.
+
+**Assistant:** Confirmed it is fully possible and `erp/region` is the ideal candidate (static 15-row reference table, no partitioning). Presented a plan: a `write_json` helper in notebook 01, a `fmt` parameter threaded through the generic ingest function in notebook 02 (Auto Loader `cloudFiles.format` + batch fallback branch), and a fresh checkpoint for region.
+
+**User:** i didnt run anything in databricks till now, so there are no files generated and no cataloges generated. next make the erp/region as json file, so that make the changes accordingly in notebooks 01 and 02
+
+**Assistant:** Implemented the changes (no cleanup needed since nothing had run yet):
+
+- **Notebook 01:** added `write_json` (Spark writes one JSON object per line — JSONL, a realistic JSON export style); `erp/region` is now written as JSON, everything else stays CSV; header dataset table gained a Format column; section-6 description updated to "CSV ERP exports + one JSON file".
+- **Notebook 02:** `INGESTIONS` now carries a per-dataset format (region = `json`, rest = `csv`); `ingest_to_bronze` takes a `fmt="csv"` parameter; Auto Loader uses `cloudFiles.format=fmt` with CSV-only options applied conditionally; batch fallback branches between `spark.read.csv` and `spark.read.format("json")`.
+- README run-order updated; both notebooks re-verified with the AST syntax check (passing).
+
+Expected result on CE: `/FileStore/raw_data/erp/region/` contains JSON files and `bronze.erp_region` gets its 15 rows from them.
+
+---
+
+## 13. Where the files live
+
+**User:** ok, good. now just small doubt - all these generated csv and json files - where they will be saved or stored? in databricks?
+
+**Assistant:** Yes — everything stays inside Databricks, on **DBFS** (Databricks File System): `/FileStore/raw_data/erp/...`, `/FileStore/raw_data/orders/`, `/FileStore/raw_data/transactions/dt=YYYY-MM-DD/`, with Auto Loader checkpoints under `/FileStore/raw_data/_checkpoints/`. DBFS is Databricks-managed storage that persists across clusters and restarts (safe to stop the cluster after running). Delta tables (bronze/silver/gold) are stored via the Hive metastore, also DBFS-backed. Inspect with `%fs ls` or the UI (Workspace → FileStore). Nothing exists yet until notebook 01 is actually run.
+
+---
+
+## 14. Landing-zone checkpoints (fail-fast)
+
+**User:** can you add this checkpoint to check that are there any files present or not in DBFS or Databricks-managed storage? like show before generating files and after generated the files, and also before ingesting in to bronze layer at all 3 places. - before doing it check is this correct and good work as data engineer or not? if yes then only add them.
+
+**Assistant:** Verdict: **yes — this is standard fail-fast + observability practice**, with two professional rules: tolerate missing folders (first run) and keep output compact (never dump ~730 daily transaction files).
+
+Implemented at all three places:
+
+- **Notebook 01 — 6a (BEFORE generation):** inventory of all 8 landing-zone folders via a recursive DBFS listing helper (`ls_r`) + `inventory()` printer; on a fresh run shows `NOT CREATED YET` / `0 file(s) (EMPTY)`; re-runs show the previous exports that `overwrite` replaces.
+- **Notebook 01 — 6b (AFTER generation):** same inventory showing the files that landed (region JSON + ~730 daily transaction files).
+- **Notebook 02 — 2b (BEFORE ingestion):** inventory of the 7 source folders right before the consume loop, plus a **fail-fast guard** in the loop: any folder with 0 files is skipped with a warning instead of silently streaming "0 rows".
+
+Verification: both notebooks pass the AST syntax check, and the helpers were unit-tested locally with a mocked `dbutils` — missing path → `NOT CREATED YET`, empty folder → `(EMPTY)`, nested recursion counts correctly (3 files found). Notes: counts include Spark `_SUCCESS` marker files (expected, documented in the markdown), and the transactions counter takes a few extra seconds as it lists ~730 day folders.
+
+---
+
+## 15. Jobs + Asset Bundles explained
+
+**User:** ok good, next explain me resources/jobs/sales_platform_workflow.yml file and databricks jobs
+
+**Assistant:** Explained what **Databricks Jobs** are (managed scheduler/orchestrator: tasks, dependencies, clusters, schedules, alerting, run history) and walked through the workflow YAML line by line:
+
+- Job name is environment-prefixed (`${bundle.target}-sales-platform-workflow` → one job per env)
+- One **job cluster** (`sales_etl`) that spins up for the run and shuts down after — cost-efficient; node config comes from `databricks.yml` variables
+- 10 notebook **tasks** wired by `depends_on` into a DAG: a strict chain 00→05, then **parallel fan-out** (06 audit and 07 aggregates run concurrently after 05), then 08/09 after 07
+- Schedule: cron `0 0 2 * * ?` UTC (daily 02:00, so data is ready before the 07:00 SLA)
+- Email notifications on failure
+- **CE caveat:** no Jobs API on Community Edition, so the bundle is a "production wiring" artifact — on CE the same flow is run manually in 00→10 order
+
+**User:** yes
+
+**Assistant:** (follow-up requested) Explained `databricks.yml`: the `bundle` block (name), shared `variables` (spark_version/node_type/num_workers) that the workflow references via `${var.*}` (single point to change the cluster everywhere), the three `targets` — `dev` (development mode, deploys into the user's personal folder), `qa` (shared path, deploy-mode), `prod` (production mode, `/Shared`) — and `include` wiring `resources/jobs/*.yml`.
+
+Then hardened the workflow with: `max_retries: 2` + 60 s backoff on the idempotent aggregates task, a 4-hour `timeout_seconds` safety valve, an `on_success` email notification (mirroring `on_failure`), and a comment documenting the intentional 06‖07 parallel fan-out. Validated the YAML by parsing it (all 10 tasks, retry config, timeout, and notifications confirmed).
+
+---
+
+## 16. Commit messages
+
+**User:** no i already done the previous changes commits, give me the comment for this change only
+
+**Assistant:** Provided:
+`Add resilience to scheduled workflow: retries with backoff on idempotent aggregations, 4h run timeout, on_success notifications, document parallel fan-out`
+
+**User:** give a very short comment for this commit
+
+**Assistant:** Provided:
+`Harden scheduled workflow: retries, timeout, on_success alerts`
+
+---
+
+## 17. The shared Python package
+
+**User:** ok next explain me the src/sales_platform
+
+**Assistant:** Explained `src/sales_platform` — the **testable core** of the pipeline logic, a pure-Python mirror of what the notebooks do so it can be unit-tested locally without Spark (PySpark imported lazily at call time). Three modules:
+
+- **`config.py`** — single source of truth: DBFS paths, the full `TABLES` map (every bronze/silver/gold table name), business constants (segment thresholds, daily budget, reconciliation tolerance), DQ severity buckets, plus a `validate()` with import-time sanity assertions.
+- **`dq_rules.py`** — the declarative DQ rule registry: 10 column rules as `(id, description, SQL predicate)` tuples where a predicate marks a row INVALID (completeness DQ_001–005, validity 006–008, domain 009–010), 2 referential-integrity rules (DQ_011/012) evaluated as joins against Silver dims, a status-synonym map (`SHIPPED → COMPLETED`) applied before validation, and a Spark helper that attaches the `_errors` array column. Its `validate()` enforces invariants like "domain predicates must catch NULLs" and "every synonym maps to a value that passes DQ_010".
+- **`scd2.py`** — the generic SCD Type 2 upsert engine: SHA-256 hash of tracked attributes for change detection, first-run table creation, new versions = brand-new (`left_anti`) ∪ changed (`inner`), one `MERGE` closes superseded versions with `is_current=false` and the source's `updated_date` as end date — and it is idempotent (a no-op re-run is a no-op).
+
+Connection: the 15 local pytest tests exercise these pure functions (`pyproject.toml` sets `pythonpath = ["src"]`), while notebooks 03/04 carry the same logic for the CE runtime — tests prove the engine, notebooks execute it on the cluster.
+
+---
+
+## 18. This file — update
+
+**User:** ok like previously - update all the conversation (without the code) in to the KNK.md file.
+
+**Assistant:** Appended sections 9–17 (project recap, git plan, CSV-only landing zone review, region-as-JSON change, file storage explanation, landing-zone checkpoints, Jobs/Asset Bundles walkthrough + hardening, commit messages, and the shared package explanation) to this document, following the established format.
