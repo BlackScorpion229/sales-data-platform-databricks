@@ -500,6 +500,60 @@ print(f"Customer updates: {len(customer_updates)} ({len(changed)} changed, 10 ne
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### 6a. Checkpoint — landing zone BEFORE generation
+# MAGIC Fail-fast sanity check: on a fresh run every folder must be empty or not
+# MAGIC yet created (00 only creates the base folders). Re-runs show the previous
+# MAGIC exports that `mode("overwrite")` replaces.
+
+# COMMAND ----------
+
+LANDING_PATHS = [
+    RAW_CUSTOMER,
+    RAW_PRODUCT,
+    f"{RAW_BASE}/erp/customer_updates",
+    f"{RAW_BASE}/erp/region",
+    f"{RAW_BASE}/erp/sales_rep",
+    f"{RAW_BASE}/erp/currency",
+    f"{RAW_BASE}/orders",
+    RAW_TRANSACT,
+]
+
+def ls_r(path, max_depth=2, _depth=0):
+    """Recursively list files under a DBFS path (tolerant of missing paths)."""
+    files = []
+    if _depth > max_depth:
+        return files
+    try:
+        for e in sorted(dbutils.fs.ls(path), key=lambda x: x.path):
+            if e.isDir():
+                files.extend(ls_r(e.path, max_depth, _depth + 1))
+            else:
+                files.append(e.path)
+    except Exception:
+        pass
+    return files
+
+def inventory(label, paths):
+    """Print a per-folder file count — the landing-zone checkpoint."""
+    total = 0
+    print(f"== {label} ==")
+    for p in paths:
+        try:
+            dbutils.fs.ls(p)
+        except Exception:
+            print(f"  {p}  ->  NOT CREATED YET")
+            continue
+        files = ls_r(p)
+        total += len(files)
+        print(f"  {p}  ->  {len(files):>6,} file(s)" + ("  (EMPTY)" if not files else ""))
+    print(f"  TOTAL: {total:,} file(s) in landing zone")
+    print()
+
+inventory("Landing zone BEFORE generation", LANDING_PATHS)
+
+# COMMAND ----------
+
 from pyspark.sql import functions as F
 
 CUST_COLS = ["customer_id", "customer_name", "customer_type", "customer_segment", "country",
@@ -543,3 +597,14 @@ print(f"products      : {n_prod:>7,}")
 print(f"orders        : {n_ord:>7,}")
 print(f"transactions  : {len(txns):>7,} rows ->", len({t['transaction_date'] for t in txns}), "daily files")
 print(f"regions/reps/currencies written")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 6b. Checkpoint — landing zone AFTER generation
+# MAGIC Proves every export landed on DBFS: CSV everywhere, one JSON file
+# MAGIC (region), and one CSV per transaction day (~730 daily files).
+
+# COMMAND ----------
+
+inventory("Landing zone AFTER generation", LANDING_PATHS)

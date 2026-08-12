@@ -124,12 +124,59 @@ def ingest_to_bronze(source_path, target_table, checkpoint_path, fmt="csv", use_
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 2b. Checkpoint — landing zone BEFORE ingestion
+# MAGIC Fail-fast inventory: every source folder must contain files before it is
+# MAGIC consumed. Empty folders are skipped with a warning, never silently
+# MAGIC streamed as "0 rows". (Run `01_Generate_Synthetic_ERP_Data` first.)
+
+# COMMAND ----------
+
+def ls_r(path, max_depth=2, _depth=0):
+    """Recursively list files under a DBFS path (tolerant of missing paths)."""
+    files = []
+    if _depth > max_depth:
+        return files
+    try:
+        for e in sorted(dbutils.fs.ls(path), key=lambda x: x.path):
+            if e.isDir():
+                files.extend(ls_r(e.path, max_depth, _depth + 1))
+            else:
+                files.append(e.path)
+    except Exception:
+        pass
+    return files
+
+def inventory(label, paths):
+    """Print a per-folder file count — the landing-zone checkpoint."""
+    total = 0
+    print(f"== {label} ==")
+    for p in paths:
+        try:
+            dbutils.fs.ls(p)
+        except Exception:
+            print(f"  {p}  ->  NOT CREATED YET")
+            continue
+        files = ls_r(p)
+        total += len(files)
+        print(f"  {p}  ->  {len(files):>6,} file(s)" + ("  (EMPTY)" if not files else ""))
+    print(f"  TOTAL: {total:,} file(s) in landing zone")
+    print()
+
+inventory("Landing zone BEFORE ingestion", [src for src, _, _, _ in INGESTIONS])
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## 3. Run ingestion for all datasets
 
 # COMMAND ----------
 
 for src, tgt, ckpt, fmt in INGESTIONS:
-    print(f"> Ingesting {src} ({fmt})")
+    n_files = len(ls_r(src))
+    if n_files == 0:
+        print(f"! SKIPPED {src}: no files found — run notebook 01 first")
+        continue
+    print(f"> Ingesting {src} ({fmt}) — {n_files} file(s)")
     ingest_to_bronze(src, tgt, ckpt, fmt=fmt)
 
 print("\nBatch ID:", BATCH_ID)
