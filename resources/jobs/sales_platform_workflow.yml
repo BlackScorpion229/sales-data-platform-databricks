@@ -1,0 +1,78 @@
+# Databricks Asset Bundle job definition (doc §25 recommended workflow, §30 env strategy)
+#
+# Orchestrates the 10 notebooks end-to-end. Deployed via:
+#   databricks bundle deploy --target prod
+#
+# Notebook paths are relative to the bundle root — DAB uploads them to the
+# workspace automatically. On Community Edition (no Jobs API) run notebooks
+# manually in the order below (see GUIDE.md).
+
+resources:
+  jobs:
+    sales_platform_workflow:
+      name: ${bundle.target}-sales-platform-workflow
+      job_clusters:
+        - job_cluster_key: sales_etl
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type}
+            num_workers: ${var.num_workers}
+            spark_conf:
+              spark.databricks.delta.preview.enabled: "true"
+      tasks:
+        - task_key: 00_setup
+          job_cluster_key: sales_etl
+          notebook_task:
+            notebook_path: ./notebooks/00_Setup_Workspace
+        - task_key: 01_generate_data
+          job_cluster_key: sales_etl
+          depends_on: [{ task_key: 00_setup }]
+          notebook_task:
+            notebook_path: ./notebooks/01_Generate_Synthetic_ERP_Data
+        - task_key: 02_ingest_bronze
+          job_cluster_key: sales_etl
+          depends_on: [{ task_key: 01_generate_data }]
+          notebook_task:
+            notebook_path: ./notebooks/02_Ingest_Bronze
+        - task_key: 03_silver
+          job_cluster_key: sales_etl
+          depends_on: [{ task_key: 02_ingest_bronze }]
+          notebook_task:
+            notebook_path: ./notebooks/03_Silver_Cleansing
+        - task_key: 04_gold_dimensions
+          job_cluster_key: sales_etl
+          depends_on: [{ task_key: 03_silver }]
+          notebook_task:
+            notebook_path: ./notebooks/04_Gold_Dimensions
+        - task_key: 05_fact_sales
+          job_cluster_key: sales_etl
+          depends_on: [{ task_key: 04_gold_dimensions }]
+          notebook_task:
+            notebook_path: ./notebooks/05_Gold_Fact_Sales
+        - task_key: 06_dq_audit
+          job_cluster_key: sales_etl
+          depends_on: [{ task_key: 05_fact_sales }]
+          notebook_task:
+            notebook_path: ./notebooks/06_Data_Quality_Audit
+        - task_key: 07_aggregates
+          job_cluster_key: sales_etl
+          depends_on: [{ task_key: 05_fact_sales }]
+          notebook_task:
+            notebook_path: ./notebooks/07_Aggregates
+        - task_key: 08_revenue_analytics
+          job_cluster_key: sales_etl
+          depends_on: [{ task_key: 07_aggregates }]
+          notebook_task:
+            notebook_path: ./notebooks/08_Analysis_Revenue
+        - task_key: 09_customer_analytics
+          job_cluster_key: sales_etl
+          depends_on: [{ task_key: 07_aggregates }]
+          notebook_task:
+            notebook_path: ./notebooks/09_Analysis_Customers
+      schedule:
+        # SLA: daily data available before 07:00 (doc §35)
+        quartz_cron_expression: "0 0 2 * * ?"
+        timezone_id: "UTC"
+      email_notifications:
+        on_failure:
+          - data-eng-team@example.com

@@ -1,0 +1,38 @@
+# Databricks Asset Bundle — Sales Revenue & Customer Analytics
+#
+# Deploy code + jobs across environments with one command:
+#   databricks bundle deploy --target dev
+#   databricks bundle run sales_platform_workflow
+#
+# Requirements: Databricks CLI (v0.224+) authenticated to a workspace.
+
+bundle:
+  name: sales-data-platform
+
+# defaults merged into every target
+variables:
+  spark_version:
+    default: 12.2.x-scala2.12
+  node_type:
+    default: i3.xlarge
+  num_workers:
+    default: "4"
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}
+  qa:
+    mode: deploy-mode-development
+    workspace:
+      root_path: /Shared/.bundle/${bundle.name}/qa
+  prod:
+    mode: production
+    workspace:
+      root_path: /Shared/.bundle/${bundle.name}/prod
+
+# resources/*.yml holds the job definitions (jobs run the notebooks)
+include:
+  - resources/jobs/*.yml
