@@ -54,9 +54,13 @@ resources:
           depends_on: [{ task_key: 05_fact_sales }]
           notebook_task:
             notebook_path: ./notebooks/06_Data_Quality_Audit
+        # intentional fan-out: audit + aggregates run in parallel after the fact
         - task_key: 07_aggregates
           job_cluster_key: sales_etl
           depends_on: [{ task_key: 05_fact_sales }]
+          # idempotent (overwrite-write agg tables) — safe to retry on transient failure
+          max_retries: 2
+          min_retry_interval_millis: 60000
           notebook_task:
             notebook_path: ./notebooks/07_Aggregates
         - task_key: 08_revenue_analytics
@@ -73,6 +77,9 @@ resources:
         # SLA: daily data available before 07:00 (doc §35)
         quartz_cron_expression: "0 0 2 * * ?"
         timezone_id: "UTC"
+      timeout_seconds: 14400   # safety valve: fail the run after 4h, don't hang
       email_notifications:
         on_failure:
+          - data-eng-team@example.com
+        on_success:
           - data-eng-team@example.com
