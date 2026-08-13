@@ -530,19 +530,24 @@ LANDING_PATHS = [
 ]
 
 def ls_r(path, max_depth=2, _depth=0):
-    """Recursively list files under a volume path (tolerant of missing paths)."""
-    files = []
-    if _depth > max_depth:
-        return files
+    """Recursively list files under a volume path (tolerant of missing paths).
+
+    Uses Hadoop FileSystem directly: one driver-side `listFiles(recursive=True)`
+    call walks the whole tree. The old per-directory `dbutils.fs.ls` recursion
+    needed ~730 sequential calls for the transactions folder (~230 ms each) —
+    that was the multi-minute wait.
+    """
     try:
-        for e in sorted(dbutils.fs.ls(path), key=lambda x: x.path):
-            if e.isDir():
-                files.extend(ls_r(e.path, max_depth, _depth + 1))
-            else:
-                files.append(e.path)
+        jvm = spark._jvm
+        conf = spark.sparkContext._jsc.hadoopConfiguration()
+        fs = jvm.org.apache.hadoop.fs.FileSystem.get(conf)
+        it = fs.listFiles(jvm.org.apache.hadoop.fs.Path(path), True)
+        files = []
+        while it.hasNext():
+            files.append(it.next().getPath().toString())
+        return files
     except Exception:
-        pass
-    return files
+        return []
 
 def inventory(label, paths):
     """Print a per-folder file count — the landing-zone checkpoint."""
