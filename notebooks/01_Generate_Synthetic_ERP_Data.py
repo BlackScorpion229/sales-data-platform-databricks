@@ -601,10 +601,13 @@ n_rep    = write_csv(sales_reps,       ["sales_rep_id", "sales_rep_name", "regio
 n_cur    = write_csv(CURRENCIES,       ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date"], f"{RAW_BASE}/erp/currency")
 
 # transactions partitioned by day -> one file per day under transactions/dt=YYYY-MM-DD/
-# repartition("dt") keeps one file per day but writes all days in parallel
-# (coalesce(1) would serialize everything through a single core — very slow for 270K rows)
-spark.createDataFrame(txns, schema=TXN_COLS) \
-    .withColumn("dt", F.col("transaction_date")) \
+# Fast path: build the DataFrame via pandas + Arrow. Spark's native dict->row
+# conversion of ~270K Python dicts was the real bottleneck (~6 min on the driver
+# regardless of repartition); Arrow serializes the same rows in ~1-2 seconds.
+# repartition("dt") keeps one file per day but writes all days in parallel.
+import pandas as pd
+txn_df = spark.createDataFrame(pd.DataFrame(txns), schema=TXN_COLS)
+txn_df.withColumn("dt", F.col("transaction_date")) \
     .repartition("dt") \
     .write.mode("overwrite").partitionBy("dt").option("header", True).csv(RAW_TRANSACT)
 
