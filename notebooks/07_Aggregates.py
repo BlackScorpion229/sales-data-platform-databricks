@@ -58,7 +58,7 @@ agg_daily = (
     )
 )
 agg_daily.write.mode("overwrite").saveAsTable(f"{GOLD}.agg_revenue_daily")
-print(f"gold.agg_revenue_daily: {agg_daily.count():,} rows")
+print(f"SalesRevenueCustomerAnalytics.gold.agg_revenue_daily: {agg_daily.count():,} rows")
 agg_daily.orderBy(F.col("calendar_date").desc()).show(5, truncate=False)
 
 # COMMAND ----------
@@ -92,7 +92,7 @@ agg_customer_monthly = (
                 F.col("year_month") == F.date_format("first_purchase_date", "yyyy-MM"))
 )
 agg_customer_monthly.write.mode("overwrite").saveAsTable(f"{GOLD}.agg_customer_monthly")
-print(f"gold.agg_customer_monthly: {agg_customer_monthly.count():,} rows")
+print(f"SalesRevenueCustomerAnalytics.gold.agg_customer_monthly: {agg_customer_monthly.count():,} rows")
 agg_customer_monthly.orderBy(F.col("year_month").desc(), F.col("revenue_usd").desc()).show(5, truncate=False)
 
 # COMMAND ----------
@@ -119,7 +119,7 @@ segmentation = lifetime.withColumn(
      .otherwise("Low Value"),
 )
 segmentation.write.mode("overwrite").saveAsTable(f"{GOLD}.customer_segmentation")
-print(f"gold.customer_segmentation: {segmentation.count():,} rows")
+print(f"SalesRevenueCustomerAnalytics.gold.customer_segmentation: {segmentation.count():,} rows")
 segmentation.orderBy(F.col("lifetime_revenue").desc()).show(10, truncate=False)
 
 # COMMAND ----------
@@ -143,7 +143,7 @@ agg_product = (
                F.round(F.col("revenue_usd") / F.sum("revenue_usd").over(Window.orderBy(F.lit(1))) * 100, 2))
 )
 agg_product.write.mode("overwrite").saveAsTable(f"{GOLD}.agg_product")
-print(f"gold.agg_product: {agg_product.count():,} rows")
+print(f"SalesRevenueCustomerAnalytics.gold.agg_product: {agg_product.count():,} rows")
 agg_product.orderBy(F.col("revenue_usd").desc()).show(5, truncate=False)
 
 # COMMAND ----------

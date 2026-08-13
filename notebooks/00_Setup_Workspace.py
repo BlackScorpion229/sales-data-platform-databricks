@@ -11,12 +11,12 @@
 # MAGIC   disabled on serverless, so raw files live in a UC volume instead)
 # MAGIC - Centralizes configuration used by every downstream notebook
 # MAGIC
-# MAGIC **Note on Unity Catalog:** Community Edition now provides a managed
-# MAGIC `workspace` catalog, but this project keeps the documented `hive_metastore`
-# MAGIC schema design — the medallion pattern is identical either way. The **raw
-# MAGIC file layer** uses a UC volume under the `workspace` catalog
-# MAGIC (`workspace.sales_data.raw_data`), which both dbutils and Auto Loader
-# MAGIC support on serverless.
+# MAGIC **Note on Unity Catalog:** everything lives under the single
+# MAGIC `SalesRevenueCustomerAnalytics` catalog — medallion schemas `bronze`,
+# MAGIC `silver`, `gold` plus the `sales_data` schema hosting the raw-data UC
+# MAGIC volume. Every reference in every notebook is **fully qualified**
+# MAGIC (`catalog.schema.table` / `/Volumes/catalog/schema/...`), so the pipeline
+# MAGIC works regardless of the session's default catalog.
 # MAGIC
 # MAGIC **Run order:** this notebook first, then every notebook in numeric order.
 
@@ -33,8 +33,8 @@
 from pyspark.sql import SparkSession
 from datetime import date
 
-# Catalog/schema names (Community Edition: hive_metastore)
-CATALOG = "hive_metastore"
+# Catalog/schema names — one catalog, fully qualified in every notebook
+CATALOG = "SalesRevenueCustomerAnalytics"
 BRONZE  = f"{CATALOG}.bronze"
 SILVER  = f"{CATALOG}.silver"
 GOLD    = f"{CATALOG}.gold"
@@ -42,10 +42,10 @@ GOLD    = f"{CATALOG}.gold"
 # Raw-data landing zone — a Unity Catalog volume (serverless-compatible)
 # The public DBFS root (`/FileStore`) is disabled on serverless compute, so the
 # ERP export files live in a UC volume instead. Layout mirrors a daily batch:
-#   /Volumes/workspace/sales_data/raw_data/erp/customer/
-#   /Volumes/workspace/sales_data/raw_data/erp/product/
-#   /Volumes/workspace/sales_data/raw_data/transactions/dt=YYYY-MM-DD/
-VOLUME_RAW   = "/Volumes/workspace/sales_data/raw_data"
+#   /Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data/erp/customer/
+#   /Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data/erp/product/
+#   /Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data/transactions/dt=YYYY-MM-DD/
+VOLUME_RAW   = "/Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data"
 RAW_BASE     = VOLUME_RAW
 RAW_CUSTOMER = f"{RAW_BASE}/erp/customer"
 RAW_PRODUCT  = f"{RAW_BASE}/erp/product"
@@ -94,9 +94,9 @@ print(f"  Checkpoint base      -> {CHECKPOINT_BASE}")
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC CREATE DATABASE IF NOT EXISTS bronze COMMENT 'Raw, near-source data as received from ERP/transaction systems';
-# MAGIC CREATE DATABASE IF NOT EXISTS silver COMMENT 'Cleansed, standardized, conformed data';
-# MAGIC CREATE DATABASE IF NOT EXISTS gold   COMMENT 'Business-ready dimensional model for dashboards';
+# MAGIC CREATE DATABASE IF NOT EXISTS SalesRevenueCustomerAnalytics.bronze COMMENT 'Raw, near-source data as received from ERP/transaction systems';
+# MAGIC CREATE DATABASE IF NOT EXISTS SalesRevenueCustomerAnalytics.silver COMMENT 'Cleansed, standardized, conformed data';
+# MAGIC CREATE DATABASE IF NOT EXISTS SalesRevenueCustomerAnalytics.gold   COMMENT 'Business-ready dimensional model for dashboards';
 
 # COMMAND ----------
 
@@ -113,7 +113,8 @@ print(f"  Checkpoint base      -> {CHECKPOINT_BASE}")
 # MAGIC `/Volumes/...` paths on serverless.
 # MAGIC
 # MAGIC - The `raw_data` volume is created *if not exists* (idempotent) under
-# MAGIC   the `workspace` catalog → `workspace.sales_data.raw_data`
+# MAGIC   the `SalesRevenueCustomerAnalytics` catalog
+# MAGIC   → `SalesRevenueCustomerAnalytics.sales_data.raw_data`
 # MAGIC - `01` writes the synthetic ERP exports there (CSV + one JSON folder)
 # MAGIC - `02` ingests them with Auto Loader (checkpoints under the volume)
 # MAGIC - `10` appends "next-day" files for the incremental demo
@@ -124,8 +125,8 @@ print(f"  Checkpoint base      -> {CHECKPOINT_BASE}")
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC CREATE SCHEMA IF NOT EXISTS workspace.sales_data COMMENT 'Raw-data landing zone for the sales platform';
-# MAGIC CREATE VOLUME IF NOT EXISTS workspace.sales_data.raw_data COMMENT 'ERP export files (serverless-compatible replacement for DBFS /FileStore)';
+# MAGIC CREATE SCHEMA IF NOT EXISTS SalesRevenueCustomerAnalytics.sales_data COMMENT 'Raw-data landing zone for the sales platform';
+# MAGIC CREATE VOLUME IF NOT EXISTS SalesRevenueCustomerAnalytics.sales_data.raw_data COMMENT 'ERP export files (serverless-compatible replacement for DBFS /FileStore)';
 
 # COMMAND ----------
 

@@ -6,7 +6,7 @@
 # MAGIC Silver transactions to the Gold dimension model — using **as-of SCD2 joins**:
 # MAGIC
 # MAGIC ```
-# MAGIC     silver.sales_transaction
+# MAGIC     SalesRevenueCustomerAnalytics.silver.sales_transaction
 # MAGIC        ├── dim_date       (ON date_key)
 # MAGIC        ├── dim_customer   (ON customer_id AND transaction_date BETWEEN effective_start/end)
 # MAGIC        ├── dim_product    (ON product_id   AND transaction_date BETWEEN effective_start/end)
@@ -77,7 +77,7 @@ fact_prep.select("sales_key", "date_key", "customer_key", "product_key", "region
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2. Idempotent upsert into `gold.fact_sales`
+# MAGIC ## 2. Idempotent upsert into `SalesRevenueCustomerAnalytics.gold.fact_sales`
 # MAGIC MERGE on `sales_key` (the unique transaction id) — re-runs and incremental
 # MAGIC loads simply refresh changed rows.
 
@@ -129,7 +129,7 @@ spark.sql(f"OPTIMIZE {TABLES['gold_fact_sales']} ZORDER BY (date_key, customer_k
 # MAGIC   ROUND(SUM(net_sales), 2)         AS net_revenue_usd,
 # MAGIC   ROUND(SUM(profit_amount), 2)     AS profit_usd,
 # MAGIC   ROUND(SUM(profit_amount) / SUM(net_sales) * 100, 2) AS margin_pct
-# MAGIC FROM gold.fact_sales;
+# MAGIC FROM SalesRevenueCustomerAnalytics.gold.fact_sales;
 
 # COMMAND ----------
 
@@ -139,8 +139,8 @@ spark.sql(f"OPTIMIZE {TABLES['gold_fact_sales']} ZORDER BY (date_key, customer_k
 # MAGIC        ROUND(SUM(f.profit_amount), 2)      AS profit_usd,
 # MAGIC        COUNT(DISTINCT f.order_id)          AS orders,
 # MAGIC        COUNT(DISTINCT f.customer_key)      AS customers
-# MAGIC FROM gold.fact_sales f
-# MAGIC JOIN gold.dim_date d ON f.date_key = d.date_key
+# MAGIC FROM SalesRevenueCustomerAnalytics.gold.fact_sales f
+# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_date d ON f.date_key = d.date_key
 # MAGIC GROUP BY d.year, d.month
 # MAGIC ORDER BY d.year, d.month;
 

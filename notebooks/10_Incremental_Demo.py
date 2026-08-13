@@ -182,7 +182,7 @@ q_txn = incremental_ingest(
 
 # 2) customer updates: fresh checkpoint (held back from 02's load)
 q_cust = incremental_ingest(
-    "customer_updates", f"{RAW_BASE}/erp/customer_updates", "bronze.erp_customer_updates",
+    "customer_updates", f"{RAW_BASE}/erp/customer_updates", f"{BRONZE}.erp_customer_updates",
     "csv", CUST_DATA_COLS, checkpoint=f"{CHECKPOINT_BASE}/customer_updates")
 
 for q in [q_txn, q_cust]:
@@ -196,7 +196,7 @@ print(f"Bronze transactions grew by: {table_count(TABLES['bronze_transaction']) 
 
 # 3) fold the updates into bronze.erp_customer (SCD2 source for Silver/Gold)
 updates = (
-    spark.read.table("bronze.erp_customer_updates")
+    spark.read.table(f"{BRONZE}.erp_customer_updates")
     .select(*CUST_DATA_COLS)
     .withColumns(AUDIT_COLS)
     .withColumn("_record_hash",
@@ -204,7 +204,7 @@ updates = (
     .dropDuplicates(["_record_hash"])
 )
 updates.write.mode("append").saveAsTable(TABLES["bronze_customer"])
-print(f"bronze.erp_customer += {updates.count():,} update rows (SCD2 source)")
+print(f"SalesRevenueCustomerAnalytics.bronze.erp_customer += {updates.count():,} update rows (SCD2 source)")
 
 # COMMAND ----------
 
@@ -259,9 +259,9 @@ for k in after:
 # MAGIC %sql
 # MAGIC SELECT customer_id, customer_name, region, state, customer_status,
 # MAGIC        effective_start_date, effective_end_date, is_current
-# MAGIC FROM gold.dim_customer
+# MAGIC FROM SalesRevenueCustomerAnalytics.gold.dim_customer
 # MAGIC WHERE customer_id IN (
-# MAGIC   SELECT customer_id FROM gold.dim_customer GROUP BY customer_id HAVING COUNT(*) > 1
+# MAGIC   SELECT customer_id FROM SalesRevenueCustomerAnalytics.gold.dim_customer GROUP BY customer_id HAVING COUNT(*) > 1
 # MAGIC )
 # MAGIC ORDER BY customer_id, effective_start_date;
 
@@ -277,9 +277,9 @@ for k in after:
 # MAGIC %sql
 # MAGIC WITH moved AS (
 # MAGIC   SELECT customer_id, region AS new_region, effective_start_date AS moved_on
-# MAGIC   FROM gold.dim_customer
+# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.dim_customer
 # MAGIC   WHERE is_current = true AND effective_start_date > '2026-06-01'
-# MAGIC     AND customer_id IN (SELECT customer_id FROM gold.dim_customer GROUP BY customer_id HAVING COUNT(*) > 1)
+# MAGIC     AND customer_id IN (SELECT customer_id FROM SalesRevenueCustomerAnalytics.gold.dim_customer GROUP BY customer_id HAVING COUNT(*) > 1)
 # MAGIC   LIMIT 1
 # MAGIC )
 # MAGIC SELECT
@@ -290,11 +290,11 @@ for k in after:
 # MAGIC   CASE WHEN d.calendar_date < m.moved_on THEN 'BEFORE move' ELSE 'AFTER move' END AS period,
 # MAGIC   ROUND(SUM(f.net_sales), 2) AS revenue
 # MAGIC FROM moved m
-# MAGIC JOIN gold.fact_sales f ON f.customer_key IN (
-# MAGIC   SELECT customer_key FROM gold.dim_customer WHERE customer_id = m.customer_id)
-# MAGIC JOIN gold.dim_customer c ON c.customer_key = f.customer_key
-# MAGIC JOIN gold.dim_date d ON f.date_key = d.date_key
-# MAGIC JOIN gold.dim_region r ON f.region_key = r.region_key
+# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.fact_sales f ON f.customer_key IN (
+# MAGIC   SELECT customer_key FROM SalesRevenueCustomerAnalytics.gold.dim_customer WHERE customer_id = m.customer_id)
+# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_customer c ON c.customer_key = f.customer_key
+# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_date d ON f.date_key = d.date_key
+# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_region r ON f.region_key = r.region_key
 # MAGIC GROUP BY m.customer_id, c.customer_name, d.year_month, r.region_name, m.moved_on, d.calendar_date
 # MAGIC ORDER BY d.calendar_date;
 
@@ -314,11 +314,11 @@ silver_before = table_count(TABLES["silver_transaction"])
 # COMMAND ----------
 
 silver_after = table_count(TABLES["silver_transaction"])
-print(f"silver.sales_transaction: {silver_before:,} -> {silver_after:,}"
+print(f"SalesRevenueCustomerAnalytics.silver.sales_transaction: {silver_before:,} -> {silver_after:,}"
       + ("  ✓ IDEMPOTENT (no duplicates)" if silver_before == silver_after else "  ✗ CHANGED!"))
 
 # MAGIC %sql
-# MAGIC SELECT * FROM gold.data_quality_audit ORDER BY run_date DESC, end_time DESC LIMIT 5;
+# MAGIC SELECT * FROM SalesRevenueCustomerAnalytics.gold.data_quality_audit ORDER BY run_date DESC, end_time DESC LIMIT 5;
 
 # COMMAND ----------
 

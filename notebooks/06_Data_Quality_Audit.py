@@ -3,7 +3,7 @@
 # MAGIC # 06 — Data Quality & Audit Framework
 # MAGIC
 # MAGIC **Purpose:** Every pipeline run records structured DQ metrics into
-# MAGIC `gold.data_quality_audit` (doc §24 / §34):
+# MAGIC `SalesRevenueCustomerAnalytics.gold.data_quality_audit` (doc §24 / §34):
 # MAGIC
 # MAGIC | Metric | Meaning |
 # MAGIC |--------|---------|
@@ -31,7 +31,7 @@
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC CREATE TABLE IF NOT EXISTS gold.data_quality_audit (
+# MAGIC CREATE TABLE IF NOT EXISTS SalesRevenueCustomerAnalytics.gold.data_quality_audit (
 # MAGIC   run_id             STRING,
 # MAGIC   pipeline_name      STRING,
 # MAGIC   run_date           DATE,
@@ -120,7 +120,7 @@ audit_df.write.mode("append").saveAsTable(TABLES["gold_dq_audit"])
 print("Audit record written")
 
 # MAGIC %sql
-# MAGIC SELECT * FROM gold.data_quality_audit ORDER BY run_date DESC;
+# MAGIC SELECT * FROM SalesRevenueCustomerAnalytics.gold.data_quality_audit ORDER BY run_date DESC;
 
 # COMMAND ----------
 
@@ -137,7 +137,7 @@ tol_usd = 0.01  # tolerance in USD (business-defined in production)
 
 bronze_net = bronze_txn.selectExpr("CAST(net_amount AS DOUBLE) AS n").selectExpr("COALESCE(SUM(n),0) AS v").collect()[0]["v"]
 silver_net = silver_txn.agg(F.sum("net_sales_usd")).collect()[0][0] or 0.0
-quarantined_net = (spark.table("silver.sales_quarantine")
+quarantined_net = (spark.table(f"{SILVER}.sales_quarantine")
                    .selectExpr("COALESCE(CAST(get_json_object(record_data, '$.net_amount') AS DOUBLE), 0) AS n")
                    .selectExpr("COALESCE(SUM(n),0) AS v").collect()[0]["v"])
 

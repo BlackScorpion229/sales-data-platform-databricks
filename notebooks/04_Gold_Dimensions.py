@@ -58,7 +58,7 @@ while cur <= end_date:
 
 dim_date = spark.createDataFrame(rows)
 dim_date.write.mode("overwrite").saveAsTable(TABLES["gold_dim_date"])
-print(f"gold.dim_date: {len(rows):,} days ({start_date} → {end_date})")
+print(f"SalesRevenueCustomerAnalytics.gold.dim_date: {len(rows):,} days ({start_date} → {end_date})")
 spark.sql(f"DESCRIBE {TABLES['gold_dim_date']}").show()
 
 # COMMAND ----------
@@ -71,22 +71,22 @@ spark.sql(f"DESCRIBE {TABLES['gold_dim_date']}").show()
 from pyspark.sql import functions as F
 
 region = (
-    spark.read.table("bronze.erp_region")
+    spark.read.table(f"{BRONZE}.erp_region")
     .withColumn("region_key", F.col("region_id").substr(2, 2).cast("int"))
     .select("region_key", "region_id", "region_name", "country", "state", "territory")
     .orderBy("region_key")
 )
 region.write.mode("overwrite").saveAsTable(TABLES["gold_dim_region"])
-print(f"gold.dim_region: {region.count()} rows")
+print(f"SalesRevenueCustomerAnalytics.gold.dim_region: {region.count()} rows")
 
 sales_rep = (
-    spark.read.table("bronze.erp_sales_rep")
+    spark.read.table(f"{BRONZE}.erp_sales_rep")
     .withColumn("sales_rep_key", F.col("sales_rep_id").substr(3, 3).cast("int"))
     .select("sales_rep_key", "sales_rep_id", "sales_rep_name", "region_id", "sales_rep_email", "hire_date", "status")
     .orderBy("sales_rep_key")
 )
 sales_rep.write.mode("overwrite").saveAsTable(TABLES["gold_dim_sales_rep"])
-print(f"gold.dim_sales_rep: {sales_rep.count()} rows")
+print(f"SalesRevenueCustomerAnalytics.gold.dim_sales_rep: {sales_rep.count()} rows")
 
 # COMMAND ----------
 
@@ -259,14 +259,14 @@ scd2_upsert(
 # MAGIC   SUM(CASE WHEN is_current THEN 1 ELSE 0 END) AS current_rows,
 # MAGIC   COUNT(DISTINCT customer_id)           AS distinct_customers,
 # MAGIC   ROUND(SUM(CASE WHEN is_current THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 4) AS avg_versions_per_customer
-# MAGIC FROM gold.dim_customer;
+# MAGIC FROM SalesRevenueCustomerAnalytics.gold.dim_customer;
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC SELECT customer_key, customer_id, customer_name, country, state, region,
 # MAGIC        customer_status, effective_start_date, effective_end_date, is_current
-# MAGIC FROM gold.dim_customer
+# MAGIC FROM SalesRevenueCustomerAnalytics.gold.dim_customer
 # MAGIC ORDER BY customer_id, effective_start_date
 # MAGIC LIMIT 15;
 

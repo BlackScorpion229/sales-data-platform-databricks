@@ -6,7 +6,7 @@
 # MAGIC realistic exports to the raw-data landing zone in a **Unity Catalog
 # MAGIC volume** — CSV for most files, JSON for `erp/region` (multi-format
 # MAGIC ingestion demo). Serverless-compatible: the public DBFS root is disabled,
-# MAGIC so `/Volumes/workspace/sales_data/raw_data` replaces `/FileStore`.
+# MAGIC so `/Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data` replaces `/FileStore`.
 # MAGIC Includes **deliberate data-quality issues** so the Bronze → Silver
 # MAGIC pipeline has real work to do.
 # MAGIC
@@ -505,7 +505,7 @@ print(f"Customer updates: {len(customer_updates)} ({len(changed)} changed, 10 ne
 # MAGIC ## 6. Write everything to the raw volume — CSV ERP exports + one JSON folder
 # MAGIC Most exports are CSV (realistic for ERP), but `erp/region` is written as
 # MAGIC JSON to demonstrate multi-format ingestion in the Bronze layer. All paths
-# MAGIC live under `/Volumes/workspace/sales_data/raw_data` (UC volume — the
+# MAGIC live under `/Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data` (UC volume — the
 # MAGIC serverless replacement for DBFS `/FileStore`).
 
 # COMMAND ----------

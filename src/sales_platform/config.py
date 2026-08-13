@@ -6,7 +6,7 @@ Pure Python: importable locally (tests) and on Databricks clusters.
 
 from __future__ import annotations
 
-CATALOG = "hive_metastore"  # Unity Catalog would be: "sales_catalog"
+CATALOG = "SalesRevenueCustomerAnalytics"
 BRONZE = f"{CATALOG}.bronze"
 SILVER = f"{CATALOG}.silver"
 GOLD = f"{CATALOG}.gold"

@@ -3,7 +3,7 @@
 # MAGIC # 02 — Bronze Layer: Auto Loader Ingestion
 # MAGIC
 # MAGIC **Purpose:** Ingests the raw ERP exports from the **UC volume landing zone**
-# MAGIC (`/Volumes/workspace/sales_data/raw_data`) into the `bronze.*` Delta tables
+# MAGIC (`/Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data`) into the `SalesRevenueCustomerAnalytics.bronze.*` Delta tables
 # MAGIC using **Auto Loader** (`cloudFiles`):
 # MAGIC - **Incremental + exactly-once**: checkpoints under the volume track every
 # MAGIC   file — new files (e.g. notebook 10's "next-day" exports) are picked up
@@ -42,13 +42,13 @@ from datetime import datetime
 from pyspark.sql import functions as F
 
 AUTO_LOADER = {
-    "customer":       {"path": RAW_CUSTOMER,       "table": "bronze.erp_customer",      "format": "csv"},
-    "product":        {"path": RAW_PRODUCT,        "table": "bronze.erp_product",       "format": "csv"},
-    "region":         {"path": f"{RAW_BASE}/erp/region",       "table": "bronze.erp_region",        "format": "json"},
-    "sales_rep":      {"path": f"{RAW_BASE}/erp/sales_rep",    "table": "bronze.erp_sales_rep",     "format": "csv"},
-    "currency":       {"path": f"{RAW_BASE}/erp/currency",     "table": "bronze.erp_currency",      "format": "csv"},
-    "order":          {"path": f"{RAW_BASE}/orders",           "table": "bronze.sales_order",       "format": "csv"},
-    "transaction":    {"path": RAW_TRANSACT,       "table": "bronze.sales_transaction", "format": "csv", "partitioned": True},
+    "customer":       {"path": RAW_CUSTOMER,       "table": f"{BRONZE}.erp_customer",      "format": "csv"},
+    "product":        {"path": RAW_PRODUCT,        "table": f"{BRONZE}.erp_product",       "format": "csv"},
+    "region":         {"path": f"{RAW_BASE}/erp/region",       "table": f"{BRONZE}.erp_region",        "format": "json"},
+    "sales_rep":      {"path": f"{RAW_BASE}/erp/sales_rep",    "table": f"{BRONZE}.erp_sales_rep",     "format": "csv"},
+    "currency":       {"path": f"{RAW_BASE}/erp/currency",     "table": f"{BRONZE}.erp_currency",      "format": "csv"},
+    "order":          {"path": f"{RAW_BASE}/orders",           "table": f"{BRONZE}.sales_order",       "format": "csv"},
+    "transaction":    {"path": RAW_TRANSACT,       "table": f"{BRONZE}.sales_transaction", "format": "csv", "partitioned": True},
 }
 
 # Audit columns added to every row on ingest (the Bronze "receipt")
@@ -225,7 +225,7 @@ for name, tbl in sorted(AUTO_LOADER.items(), key=lambda x: x[1]["table"]):
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC DESCRIBE HISTORY bronze.sales_transaction;
+# MAGIC DESCRIBE HISTORY SalesRevenueCustomerAnalytics.bronze.sales_transaction;
 
 # COMMAND ----------
 
@@ -245,7 +245,7 @@ for name, tbl in sorted(AUTO_LOADER.items(), key=lambda x: x[1]["table"]):
 # MAGIC   SUM(CASE WHEN transaction_date > CURRENT_DATE THEN 1 ELSE 0 END) AS future_dates,
 # MAGIC   SUM(CASE WHEN currency = 'XYZ' THEN 1 ELSE 0 END)           AS invalid_currency,
 # MAGIC   SUM(CASE WHEN transaction_status = 'Shipped' THEN 1 ELSE 0 END) AS invalid_status
-# MAGIC FROM bronze.sales_transaction;
+# MAGIC FROM SalesRevenueCustomerAnalytics.bronze.sales_transaction;
 
 # COMMAND ----------
 

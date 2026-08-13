@@ -25,8 +25,8 @@
 # MAGIC   COUNT(DISTINCT CASE WHEN NOT is_new_customer AND revenue_usd > 0 THEN customer_key END) AS returning_customers,
 # MAGIC   ROUND(SUM(revenue_usd) /
 # MAGIC         NULLIF(COUNT(DISTINCT CASE WHEN revenue_usd > 0 THEN customer_key END), 0), 2) AS avg_revenue_per_customer
-# MAGIC FROM gold.agg_customer_monthly
-# MAGIC WHERE year_month = (SELECT MAX(year_month) FROM gold.agg_customer_monthly
+# MAGIC FROM SalesRevenueCustomerAnalytics.gold.agg_customer_monthly
+# MAGIC WHERE year_month = (SELECT MAX(year_month) FROM SalesRevenueCustomerAnalytics.gold.agg_customer_monthly
 # MAGIC                     WHERE year_month < date_format(CURRENT_DATE, 'yyyy-MM'));
 
 # COMMAND ----------
@@ -40,7 +40,7 @@
 # MAGIC SELECT year_month,
 # MAGIC        COUNT(DISTINCT CASE WHEN is_new_customer THEN customer_key END) AS new_customers,
 # MAGIC        COUNT(DISTINCT customer_key)                                     AS total_active_customers
-# MAGIC FROM gold.agg_customer_monthly
+# MAGIC FROM SalesRevenueCustomerAnalytics.gold.agg_customer_monthly
 # MAGIC GROUP BY year_month
 # MAGIC ORDER BY year_month;
 
@@ -55,7 +55,7 @@
 # MAGIC SELECT year_month,
 # MAGIC        CASE WHEN is_new_customer THEN 'New' ELSE 'Existing' END AS cohort,
 # MAGIC        ROUND(SUM(revenue_usd), 0) AS revenue
-# MAGIC FROM gold.agg_customer_monthly
+# MAGIC FROM SalesRevenueCustomerAnalytics.gold.agg_customer_monthly
 # MAGIC GROUP BY year_month, cohort
 # MAGIC ORDER BY year_month, cohort;
 
@@ -70,7 +70,7 @@
 # MAGIC %sql
 # MAGIC WITH buyers AS (
 # MAGIC   SELECT DISTINCT customer_key, year_month
-# MAGIC   FROM gold.agg_customer_monthly
+# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.agg_customer_monthly
 # MAGIC   WHERE revenue_usd > 0
 # MAGIC ),
 # MAGIC joined AS (
@@ -100,7 +100,7 @@
 # MAGIC %sql
 # MAGIC WITH freq AS (
 # MAGIC   SELECT customer_key, COUNT(DISTINCT order_id) AS orders
-# MAGIC   FROM gold.fact_sales
+# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.fact_sales
 # MAGIC   GROUP BY customer_key
 # MAGIC )
 # MAGIC SELECT CASE
@@ -126,7 +126,7 @@
 # MAGIC        COUNT(*)                          AS customers,
 # MAGIC        ROUND(SUM(lifetime_revenue), 0)  AS lifetime_revenue,
 # MAGIC        ROUND(SUM(lifetime_revenue) * 100.0 / SUM(SUM(lifetime_revenue)) OVER (), 2) AS share_pct
-# MAGIC FROM gold.customer_segmentation
+# MAGIC FROM SalesRevenueCustomerAnalytics.gold.customer_segmentation
 # MAGIC GROUP BY customer_segment_value
 # MAGIC ORDER BY lifetime_revenue DESC;
 
@@ -139,10 +139,10 @@
 # MAGIC          lifetime_revenue,
 # MAGIC          ROW_NUMBER() OVER (ORDER BY lifetime_revenue DESC) AS rn,
 # MAGIC          COUNT(*) OVER () AS n_customers
-# MAGIC   FROM gold.customer_segmentation
+# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.customer_segmentation
 # MAGIC )
 # MAGIC SELECT ROUND(SUM(lifetime_revenue) * 100.0 /
-# MAGIC               (SELECT SUM(lifetime_revenue) FROM gold.customer_segmentation), 2) AS top20_revenue_share_pct
+# MAGIC               (SELECT SUM(lifetime_revenue) FROM SalesRevenueCustomerAnalytics.gold.customer_segmentation), 2) AS top20_revenue_share_pct
 # MAGIC FROM ranked
 # MAGIC WHERE rn <= n_customers * 0.2;
 
@@ -156,15 +156,15 @@
 # MAGIC %sql
 # MAGIC WITH last_purchase AS (
 # MAGIC   SELECT customer_key, MAX(d.calendar_date) AS last_order_date
-# MAGIC   FROM gold.fact_sales f
-# MAGIC   JOIN gold.dim_date d ON f.date_key = d.date_key
+# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.fact_sales f
+# MAGIC   JOIN SalesRevenueCustomerAnalytics.gold.dim_date d ON f.date_key = d.date_key
 # MAGIC   GROUP BY customer_key
 # MAGIC )
 # MAGIC SELECT
 # MAGIC   COUNT(*) AS at_risk_customers,
 # MAGIC   ROUND(SUM(c.lifetime_revenue), 0) AS revenue_at_risk
 # MAGIC FROM last_purchase lp
-# MAGIC JOIN gold.customer_segmentation c USING (customer_key)
+# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.customer_segmentation c USING (customer_key)
 # MAGIC WHERE lp.last_order_date <= date_add(CURRENT_DATE, -180);
 
 # COMMAND ----------
