@@ -596,9 +596,11 @@ n_rep    = write_csv(sales_reps,       ["sales_rep_id", "sales_rep_name", "regio
 n_cur    = write_csv(CURRENCIES,       ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date"], f"{RAW_BASE}/erp/currency")
 
 # transactions partitioned by day -> one file per day under transactions/dt=YYYY-MM-DD/
+# repartition("dt") keeps one file per day but writes all days in parallel
+# (coalesce(1) would serialize everything through a single core — very slow for 270K rows)
 spark.createDataFrame(txns, schema=TXN_COLS) \
     .withColumn("dt", F.col("transaction_date")) \
-    .coalesce(1) \
+    .repartition("dt") \
     .write.mode("overwrite").partitionBy("dt").option("header", True).csv(RAW_TRANSACT)
 
 print(f"customers     : {n_cust:>7,}")
