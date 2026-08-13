@@ -106,13 +106,21 @@ python -m pytest tests -q     # 15 tests: config, DQ registry, thresholds
 
 ## Community Edition notes
 
-- No Unity Catalog → `hive_metastore` schemas `bronze/silver/gold`
-  (in production: `sales_catalog.bronze/...`)
+- Serverless CE runs Unity Catalog → catalog `SalesRevenueCustomerAnalytics` with
+  schemas `bronze`/`silver`/`gold` + volume `sales_data`; every reference is fully
+  qualified (`catalog.schema.table`, `/Volumes/catalog/schema/...`)
+  (legacy shared CE: `hive_metastore` schemas instead)
 - No SQL Warehouses/dashboards → notebook `display()` charts; the SQL queries
   port 1:1 to Databricks SQL / Power BI
 - No scheduled jobs → run notebooks manually; `resources/jobs/` YAML shows the
   production workflow wiring
 - Auto Loader used in directory-listing mode with a batch fallback
+- Serverless/Spark Connect gotchas: no session conf for delta `autoMerge` (use
+  write option `mergeSchema`), `input_file_name()` banned in UC (use
+  `_metadata.file_path`), cloudFiles option keys get lowercased
+  (`cloudFiles.validateOptions=false`), no `StreamingQuery.awaitAnyTermination()`
+  (use `awaitTermination()`), and partition directory values must be URL-safe
+  (time-suffixed `dt=` dirs break partition pruning with a `CAST_INVALID_INPUT`)
 
 ## Requirements traceability
 

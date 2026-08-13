@@ -88,6 +88,24 @@ DATA_COLS = {
 # below — serverless does not allow setting
 # `spark.databricks.delta.schema.autoMerge.enabled` as a session config.
 
+# Fail-fast: every source folder must already contain files (written by 01).
+# Auto Loader cannot infer a CSV schema from an empty folder — without this
+# guard that surfaces as a cryptic CF_EMPTY_DIR_FOR_SCHEMA_INFERENCE / 
+# UNABLE_TO_INFER_SCHEMA deep inside the stream or the batch fallback.
+EMPTY_DIRS = []
+for name, cfg in AUTO_LOADER.items():
+    try:
+        entries = [e for e in dbutils.fs.ls(cfg["path"]) if e.isDir or e.size > 0]
+    except Exception:
+        entries = []
+    if not entries:
+        EMPTY_DIRS.append(name)
+if EMPTY_DIRS:
+    raise RuntimeError(
+        "Source folders are empty: " + ", ".join(EMPTY_DIRS) +
+        " — run notebook 01 (data generator) against the raw volume first."
+    )
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -108,10 +126,14 @@ def ingest_stream(dataset, cfg):
     reader = (
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", cfg["format"])
+        .option("cloudFiles.schemaLocation", f"{checkpoint}/schema")
         .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
         .option("cloudFiles.rescuedDataColumnName", "_rescued_data")
         .option("cloudFiles.inferColumnTypes", "true")
         .option("cloudFiles.checkpointLocation", checkpoint)
+        # Spark Connect (serverless) lowercases option keys, which breaks
+        # cloudFiles' case-sensitive option validation — skip the check.
+        .option("cloudFiles.validateOptions", "false")
     )
     if cfg["format"] == "csv":
         reader = reader.option("header", "true")
@@ -119,11 +141,11 @@ def ingest_stream(dataset, cfg):
     df = reader.load(cfg["path"])
 
     if cfg.get("partitioned"):
-        df = df.withColumn("dt", F.to_date(F.regexp_extract(F.input_file_name(), r"dt=(\d{4}-\d{2}-\d{2})", 1)))
+        df = df.withColumn("dt", F.to_date(F.regexp_extract(F.col("_metadata.file_path"), r"dt=(\d{4}-\d{2}-\d{2})", 1)))
 
     data_cols = DATA_COLS[dataset]
     df = (
-        df.withColumn("_source_file", F.input_file_name())
+        df.withColumn("_source_file", F.col("_metadata.file_path"))
           .withColumns(AUDIT_COLS)
           .withColumn("_record_hash",
                       F.sha2(F.concat_ws("|", *[F.col(c).cast("string") for c in data_cols]), 256))
@@ -153,7 +175,7 @@ for dataset, cfg in AUTO_LOADER.items():
 for name, q in streams.items():
     if q is None:
         continue
-    q.awaitAnyTermination()
+    q.awaitTermination()
 
 failed = [n for n, q in streams.items() if q is not None and q.lastProgress is None and not q.isActive]
 for n in failed:
@@ -183,11 +205,11 @@ def batch_load(dataset, cfg):
         df = spark.read.json(cfg["path"])
 
     if cfg.get("partitioned"):
-        df = df.withColumn("dt", F.to_date(F.regexp_extract(F.input_file_name(), r"dt=(\d{4}-\d{2}-\d{2})", 1)))
+        df = df.withColumn("dt", F.to_date(F.regexp_extract(F.col("_metadata.file_path"), r"dt=(\d{4}-\d{2}-\d{2})", 1)))
 
     data_cols = DATA_COLS[dataset]
     df = (
-        df.withColumn("_source_file", F.input_file_name())
+        df.withColumn("_source_file", F.col("_metadata.file_path"))
           .withColumns(AUDIT_COLS)
           .withColumn("_record_hash",
                       F.sha2(F.concat_ws("|", *[F.col(c).cast("string") for c in data_cols]), 256))

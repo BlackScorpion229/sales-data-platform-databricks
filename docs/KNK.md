@@ -40,7 +40,7 @@
 
 **Assistant:** Mapped the requirements onto Community Edition constraints:
 
-- No Unity Catalog → `hive_metastore` schemas `bronze`/`silver`/`gold` instead
+- Serverless CE includes Unity Catalog → catalog `SalesRevenueCustomerAnalytics` with schemas `bronze`/`silver`/`gold` + volume `sales_data` (all refs fully qualified)
 - No SQL Warehouses/Dashboards → notebook `display()` charts + documented Power BI path
 - No scheduled Jobs/Workflows → manual notebook runs + a Workflow YAML for later
 - Auto Loader works on CE (directory-listing mode; verified via docs) with a batch fallback included anyway

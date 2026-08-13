@@ -151,18 +151,22 @@ def incremental_ingest(dataset, path, table, fmt, data_cols, partitioned=False, 
     reader = (
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", fmt)
+        .option("cloudFiles.schemaLocation", f"{checkpoint}/schema")
         .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
         .option("cloudFiles.rescuedDataColumnName", "_rescued_data")
         .option("cloudFiles.inferColumnTypes", "true")
         .option("cloudFiles.checkpointLocation", checkpoint)
+        # Spark Connect (serverless) lowercases option keys, which breaks
+        # cloudFiles' case-sensitive option validation — skip the check.
+        .option("cloudFiles.validateOptions", "false")
     )
     if fmt == "csv":
         reader = reader.option("header", "true")
     df = reader.load(path)
     if partitioned:
-        df = df.withColumn("dt", F.to_date(F.regexp_extract(F.input_file_name(), r"dt=(\d{4}-\d{2}-\d{2})", 1)))
+        df = df.withColumn("dt", F.to_date(F.regexp_extract(F.col("_metadata.file_path"), r"dt=(\d{4}-\d{2}-\d{2})", 1)))
     df = (
-        df.withColumn("_source_file", F.input_file_name())
+        df.withColumn("_source_file", F.col("_metadata.file_path"))
           .withColumns(AUDIT_COLS)
           .withColumn("_record_hash",
                       F.sha2(F.concat_ws("|", *[F.col(c).cast("string") for c in data_cols]), 256))
@@ -186,7 +190,7 @@ q_cust = incremental_ingest(
     "csv", CUST_DATA_COLS, checkpoint=f"{CHECKPOINT_BASE}/customer_updates")
 
 for q in [q_txn, q_cust]:
-    q.awaitAnyTermination()
+    q.awaitTermination()
 
 files_txn = q_txn.lastProgress["numInputFiles"] if q_txn.lastProgress else 0
 print(f"Auto Loader incremental run:")

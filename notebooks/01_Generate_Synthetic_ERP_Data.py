@@ -605,9 +605,13 @@ n_cur    = write_csv(CURRENCIES,       ["currency_code", "currency_name", "excha
 # conversion of ~270K Python dicts was the real bottleneck (~6 min on the driver
 # regardless of repartition); Arrow serializes the same rows in ~1-2 seconds.
 # repartition("dt") keeps one file per day but writes all days in parallel.
+# NOTE: dt must be date-only ("yyyy-MM-dd"). Malformed rows contain a time
+# suffix ("2024-09-01 08:15:00"); using the full value would create
+# "dt=2024-09-01 08:15:00/" directories whose URL-encoded colons (%3A) break
+# Auto Loader's partition-column timestamp cast downstream.
 import pandas as pd
 txn_df = spark.createDataFrame(pd.DataFrame(txns), schema=TXN_COLS)
-txn_df.withColumn("dt", F.col("transaction_date")) \
+txn_df.withColumn("dt", F.substring(F.col("transaction_date"), 1, 10)) \
     .repartition("dt") \
     .write.mode("overwrite").partitionBy("dt").option("header", True).csv(RAW_TRANSACT)
 
