@@ -5,8 +5,10 @@
 # MAGIC **Purpose:** Simulate the next business day after the initial load and prove
 # MAGIC the platform's three hardest requirements (doc §26, §36, §38):
 # MAGIC
-# MAGIC 1. **Auto Loader processes ONLY the new files** — the ~270K existing
-# MAGIC    transaction files are never re-read (checkpoint-based incremental discovery)
+# MAGIC 1. **Only the new rows enter Bronze** — the ~270K existing transactions
+# MAGIC    are never re-read or rewritten: new daily files land in the raw
+# MAGIC    **UC volume**, and Auto Loader's checkpoint discovers **only those
+# MAGIC    files** (incremental by design)
 # MAGIC 2. **MERGE upserts are idempotent** — re-running a pipeline changes nothing
 # MAGIC 3. **SCD Type 2** — changed customers get a closed + opened version, and
 # MAGIC    historical revenue stays attributed to their *then-current* attributes
@@ -43,17 +45,19 @@ for k, v in baseline.items():
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2. Simulate the ERP pushing a new daily batch
-# MAGIC New transaction files for 4 new days with fresh DQ issues — both classes:
+# MAGIC ## 2. Simulate the ERP pushing a new daily batch (raw volume)
+# MAGIC New transaction rows for 4 new days are written as **new files** into
+# MAGIC `transactions/dt=YYYY-MM-DD/` with fresh DQ issues — both classes:
 # MAGIC **unrecoverable** (null customer, `On Hold` status, `XYZ` currency,
 # MAGIC duplicates → quarantine/dedup) and **recoverable** (`shipped` → normalized
-# MAGIC to `Completed`). Plus the customer-master update file (region moves /
-# MAGIC status changes / new customers → SCD2).
+# MAGIC to `Completed`). The customer-master updates (region moves / status changes
+# MAGIC / new customers → SCD2) were staged by notebook 01 in
+# MAGIC `erp/customer_updates/` and are ingested in step 3.
 
 # COMMAND ----------
 
 import random
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 rng = random.Random(20260812)
 new_start = date(2026, 8, 12)
@@ -103,55 +107,104 @@ TXN_COLS = ["transaction_id", "order_id", "transaction_date", "customer_id", "pr
             "quantity", "unit_price", "discount", "tax", "gross_amount", "net_amount",
             "currency", "region_id", "sales_rep_id", "transaction_status", "source_system"]
 
-spark.createDataFrame(rows, schema=TXN_COLS) \
-    .withColumn("dt", F.col("transaction_date")) \
-    .coalesce(1) \
+from pyspark.sql import functions as F
+
+new_txns = spark.createDataFrame(rows, schema=TXN_COLS)
+new_txns.coalesce(1).withColumn("dt", F.col("transaction_date")) \
     .write.mode("append").partitionBy("dt").option("header", True).csv(RAW_TRANSACT)
 
-print(f"New batch written: {len(rows):,} transaction rows across 4 new daily files")
-print(f"New customers / changes: /FileStore/raw_data/erp/customer_updates/ (from notebook 01)")
+print(f"New batch written to raw volume: {len(rows):,} transaction rows -> {len({r['transaction_date'] for r in rows})} new daily files under {RAW_TRANSACT}")
+print(f"Customer-update file staged by notebook 01: {RAW_BASE}/erp/customer_updates")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Re-run Bronze ingestion — Auto Loader picks up **only the new files**
+# MAGIC ## 3. Re-run Auto Loader — only the new files are discovered
 # MAGIC
-# MAGIC `%run` executes the notebook code inline: the checkpoint remembers everything
-# MAGIC already seen, so the 270K+ existing files are *not* reprocessed — only the 4
-# MAGIC new files (and the customer-update file) enter Bronze.
+# MAGIC Re-running the exact Auto Loader pipeline from notebook 02 against the same
+# MAGIC volume **with the same checkpoint** processes *only* the files that arrived
+# MAGIC since the initial load: the 4 new daily transaction files. The ~730
+# MAGIC existing daily files are skipped by the checkpoint — no re-read, no
+# MAGIC re-parse. The customer-update file (held back since notebook 01) is
+# MAGIC ingested with its own fresh checkpoint.
 
 # COMMAND ----------
 
-# ingest the new transaction files + the customer update file
-for src, tgt, ckpt in [
-    (RAW_TRANSACT, TABLES["bronze_transaction"], f"{CHECKPOINT_BASE}/transaction"),
-    (f"{RAW_BASE}/erp/customer_updates", TABLES["bronze_customer"], f"{CHECKPOINT_BASE}/customer_updates"),
-]:
-    from datetime import datetime
-    BATCH_ID = f"BATCH_{datetime.now():%Y%m%d_%H%M%S}"
-    stream = (
-        spark.readStream.format("cloudFiles")
-        .option("cloudFiles.format", "csv")
-        .option("header", "true")
-        .option("inferSchema", "true")
-        .option("cloudFiles.schemaLocation", ckpt)
-        .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
-        .load(src)
-    )
-    audit = (
-        stream
-        .withColumn("_ingestion_timestamp", F.current_timestamp())
-        .withColumn("_source_file",         F.input_file_name())
-        .withColumn("_source_system",       F.lit("ERP"))
-        .withColumn("_batch_id",            F.lit(BATCH_ID))
-        .withColumn("_record_hash",         F.sha2(F.concat_ws("|", *[F.col(c).cast("string") for c in stream.columns]), 256))
-    )
-    q = (audit.writeStream.option("checkpointLocation", ckpt)
-         .trigger(availableNow=True).toTable(tgt))
-    q.awaitTermination()
-    print(f"  bronze <- {src}: total now {table_count(tgt):,} rows")
+from datetime import datetime
+from pyspark.sql import functions as F
 
-print(f"\nBronze transactions grew by: {table_count(TABLES['bronze_transaction']) - baseline['bronze_transactions']:,} (≈ new files only)")
+BATCH_ID = f"BATCH_{datetime.now():%Y%m%d_%H%M%S}"
+AUDIT_COLS = {
+    "_ingestion_timestamp": F.current_timestamp(),
+    "_source_system":       F.lit("ERP"),
+    "_batch_id":            F.lit(BATCH_ID),
+}
+TXN_DATA_COLS = TXN_COLS
+CUST_DATA_COLS = ["customer_id", "customer_name", "customer_type", "customer_segment", "country",
+                  "state", "city", "region", "industry", "sales_rep_id", "customer_status",
+                  "created_date", "updated_date"]
+
+def incremental_ingest(dataset, path, table, fmt, data_cols, partitioned=False, checkpoint=None):
+    """Auto Loader stream from the volume with the same audit/dedup contract as 02."""
+    if checkpoint is None:
+        checkpoint = f"{CHECKPOINT_BASE}/{dataset}"
+    reader = (
+        spark.readStream.format("cloudFiles")
+        .option("cloudFiles.format", fmt)
+        .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
+        .option("cloudFiles.rescuedDataColumnName", "_rescued_data")
+        .option("cloudFiles.inferColumnTypes", "true")
+        .option("cloudFiles.checkpointLocation", checkpoint)
+    )
+    if fmt == "csv":
+        reader = reader.option("header", "true")
+    df = reader.load(path)
+    if partitioned:
+        df = df.withColumn("dt", F.to_date(F.regexp_extract(F.input_file_name(), r"dt=(\d{4}-\d{2}-\d{2})", 1)))
+    df = (
+        df.withColumn("_source_file", F.input_file_name())
+          .withColumns(AUDIT_COLS)
+          .withColumn("_record_hash",
+                      F.sha2(F.concat_ws("|", *[F.col(c).cast("string") for c in data_cols]), 256))
+          .drop("_rescued_data")
+          .dropDuplicates(["_record_hash"])
+    )
+    q = df.writeStream.option("checkpointLocation", checkpoint)
+    if partitioned:
+        q = q.partitionBy("dt")
+    q = q.trigger(availableNow=True).toTable(table)
+    return q
+
+# 1) transactions: SAME checkpoint as notebook 02 -> only the 4 new daily files
+q_txn = incremental_ingest(
+    "transaction", RAW_TRANSACT, TABLES["bronze_transaction"],
+    "csv", TXN_DATA_COLS, partitioned=True, checkpoint=f"{CHECKPOINT_BASE}/transaction")
+
+# 2) customer updates: fresh checkpoint (held back from 02's load)
+q_cust = incremental_ingest(
+    "customer_updates", f"{RAW_BASE}/erp/customer_updates", "bronze.erp_customer_updates",
+    "csv", CUST_DATA_COLS, checkpoint=f"{CHECKPOINT_BASE}/customer_updates")
+
+for q in [q_txn, q_cust]:
+    q.awaitAnyTermination()
+
+files_txn = q_txn.lastProgress["numInputFiles"] if q_txn.lastProgress else 0
+print(f"Auto Loader incremental run:")
+print(f"  transactions    : {files_txn} new file(s) discovered (checkpoint: {CHECKPOINT_BASE}/transaction)")
+print(f"  customer_updates: {q_cust.lastProgress['numInputFiles'] if q_cust.lastProgress else 0} file(s) discovered")
+print(f"Bronze transactions grew by: {table_count(TABLES['bronze_transaction']) - baseline['bronze_transactions']:,} (only the new rows)")
+
+# 3) fold the updates into bronze.erp_customer (SCD2 source for Silver/Gold)
+updates = (
+    spark.read.table("bronze.erp_customer_updates")
+    .select(*CUST_DATA_COLS)
+    .withColumns(AUDIT_COLS)
+    .withColumn("_record_hash",
+                F.sha2(F.concat_ws("|", *[F.col(c).cast("string") for c in CUST_DATA_COLS]), 256))
+    .dropDuplicates(["_record_hash"])
+)
+updates.write.mode("append").saveAsTable(TABLES["bronze_customer"])
+print(f"bronze.erp_customer += {updates.count():,} update rows (SCD2 source)")
 
 # COMMAND ----------
 
@@ -272,7 +325,8 @@ print(f"silver.sales_transaction: {silver_before:,} -> {silver_after:,}"
 # MAGIC %md
 # MAGIC ---
 # MAGIC **Key takeaways for the portfolio:**
-# MAGIC - **Incremental ingestion** proven with numbers (only new files processed)
+# MAGIC - **Incremental processing** proven with numbers (only the new rows enter
+# MAGIC   Bronze — the ~270K existing rows are untouched)
 # MAGIC - **SCD2 versioning** + as-of attribution demonstrated on real changed customers
 # MAGIC - **Idempotency** proven by re-running the pipeline (zero duplicates)
 # MAGIC - **Audit trail** shows every batch with its DQ metrics

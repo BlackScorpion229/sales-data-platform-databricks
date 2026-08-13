@@ -3,21 +3,24 @@
 # MAGIC # 01 — Generate Synthetic ERP Data
 # MAGIC
 # MAGIC **Purpose:** Simulates the source systems (ERP + transactions) by writing
-# MAGIC realistic exports to the DBFS landing zone — CSV for most files, JSON for
-# MAGIC `erp/region` (multi-format ingestion demo). Includes **deliberate
-# MAGIC data-quality issues** so the Bronze → Silver pipeline has real work to do.
+# MAGIC realistic exports to the raw-data landing zone in a **Unity Catalog
+# MAGIC volume** — CSV for most files, JSON for `erp/region` (multi-format
+# MAGIC ingestion demo). Serverless-compatible: the public DBFS root is disabled,
+# MAGIC so `/Volumes/workspace/sales_data/raw_data` replaces `/FileStore`.
+# MAGIC Includes **deliberate data-quality issues** so the Bronze → Silver
+# MAGIC pipeline has real work to do.
 # MAGIC
-# MAGIC **Generated datasets:**
+# MAGIC **Generated datasets (files in the raw volume):**
 # MAGIC | File | Format | Rows | Purpose |
 # MAGIC |------|--------|------|---------|
 # MAGIC | `erp/region/` | JSON | ~15 | Sales regions (dimension source) |
 # MAGIC | `erp/sales_rep/` | CSV | ~60 | Sales representatives (dimension source) |
 # MAGIC | `erp/currency/` | CSV | ~6 | FX rates for currency standardization |
-# MAGIC | `erp/customer/` | CSV | ~1,500 | Customer master (with ~10 new customers for demo) |
-# MAGIC | `erp/customer_updates/` | CSV | ~35 | Changed + new customer records (SCD2 demo) |
+# MAGIC | `erp/customer/` | CSV | ~1,500 | Customer master |
+# MAGIC | `erp/customer_updates/` | CSV | ~40 | Changed + new customer records (SCD2 demo) |
 # MAGIC | `erp/product/` | CSV | ~360 | Product master |
 # MAGIC | `transactions/dt=YYYY-MM-DD/` | CSV | ~270K lines | Daily order line items, 24 months |
-# MAGIC | `orders/` | ~95K | Order headers (join to lines) |
+# MAGIC | `orders/` | CSV | ~95K | Order headers (join to lines) |
 # MAGIC
 # MAGIC **Deliberate DQ issues injected** (deterministic — seeded RNG) — the raw
 # MAGIC data is **deliberately NOT clean**; cleaning happens in Silver:
@@ -446,8 +449,9 @@ print(f"  duplicates             : {len(dupe_idx):>7,}  ({len(dupe_idx)/n*100:.2
 
 # MAGIC %md
 # MAGIC ## 5. Customer update file (SCD2 + incremental demo)
-# MAGIC ~30 customers change region/state/status; ~10 are brand-new. This file will be
-# MAGIC ingested later (notebook 10) to demonstrate SCD Type 2 + incremental MERGE.
+# MAGIC ~30 customers change region/state/status; ~10 are brand-new. This file is
+# MAGIC written to `erp/customer_updates/` and ingested by notebook 10 to
+# MAGIC demonstrate SCD Type 2 + incremental MERGE.
 
 # COMMAND ----------
 
@@ -494,9 +498,11 @@ print(f"Customer updates: {len(customer_updates)} ({len(changed)} changed, 10 ne
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 6. Write everything to the landing zone — CSV ERP exports + one JSON file
+# MAGIC ## 6. Write everything to the raw volume — CSV ERP exports + one JSON folder
 # MAGIC Most exports are CSV (realistic for ERP), but `erp/region` is written as
-# MAGIC JSON to demonstrate multi-format ingestion in the Bronze layer.
+# MAGIC JSON to demonstrate multi-format ingestion in the Bronze layer. All paths
+# MAGIC live under `/Volumes/workspace/sales_data/raw_data` (UC volume — the
+# MAGIC serverless replacement for DBFS `/FileStore`).
 
 # COMMAND ----------
 
@@ -520,7 +526,7 @@ LANDING_PATHS = [
 ]
 
 def ls_r(path, max_depth=2, _depth=0):
-    """Recursively list files under a DBFS path (tolerant of missing paths)."""
+    """Recursively list files under a volume path (tolerant of missing paths)."""
     files = []
     if _depth > max_depth:
         return files
@@ -577,19 +583,19 @@ def write_json(rows, path):
     df.coalesce(1).write.mode("overwrite").json(path)
     return df.count()
 
-n_cust   = write_csv(customers,        CUST_COLS, "/FileStore/raw_data/erp/customer")
-n_prod   = write_csv(products,         PROD_COLS, "/FileStore/raw_data/erp/product")
-n_ord    = write_csv(orders,           ORD_COLS,  "/FileStore/raw_data/orders")
-n_upd    = write_csv(customer_updates, CUST_COLS, "/FileStore/raw_data/erp/customer_updates")
-n_reg    = write_json(REGIONS, "/FileStore/raw_data/erp/region")
-n_rep    = write_csv(sales_reps,       ["sales_rep_id", "sales_rep_name", "region_id", "sales_rep_email", "hire_date", "status"], "/FileStore/raw_data/erp/sales_rep")
-n_cur    = write_csv(CURRENCIES,       ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date"], "/FileStore/raw_data/erp/currency")
+n_cust   = write_csv(customers,        CUST_COLS, RAW_CUSTOMER)
+n_prod   = write_csv(products,         PROD_COLS, RAW_PRODUCT)
+n_ord    = write_csv(orders,           ORD_COLS,  f"{RAW_BASE}/orders")
+n_upd    = write_csv(customer_updates, CUST_COLS, f"{RAW_BASE}/erp/customer_updates")
+n_reg    = write_json(REGIONS, f"{RAW_BASE}/erp/region")
+n_rep    = write_csv(sales_reps,       ["sales_rep_id", "sales_rep_name", "region_id", "sales_rep_email", "hire_date", "status"], f"{RAW_BASE}/erp/sales_rep")
+n_cur    = write_csv(CURRENCIES,       ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date"], f"{RAW_BASE}/erp/currency")
 
 # transactions partitioned by day -> one file per day under transactions/dt=YYYY-MM-DD/
 spark.createDataFrame(txns, schema=TXN_COLS) \
     .withColumn("dt", F.col("transaction_date")) \
     .coalesce(1) \
-    .write.mode("overwrite").partitionBy("dt").option("header", True).csv("/FileStore/raw_data/transactions")
+    .write.mode("overwrite").partitionBy("dt").option("header", True).csv(RAW_TRANSACT)
 
 print(f"customers     : {n_cust:>7,}")
 print(f"customer_upd  : {n_upd:>7,}")
@@ -602,7 +608,7 @@ print(f"regions/reps/currencies written")
 
 # MAGIC %md
 # MAGIC ### 6b. Checkpoint — landing zone AFTER generation
-# MAGIC Proves every export landed on DBFS: CSV everywhere, one JSON file
+# MAGIC Proves every export landed in the volume: CSV everywhere, one JSON folder
 # MAGIC (region), and one CSV per transaction day (~730 daily files).
 
 # COMMAND ----------

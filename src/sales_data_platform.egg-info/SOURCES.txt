@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+src/sales_data_platform.egg-info/PKG-INFO
+src/sales_data_platform.egg-info/SOURCES.txt
+src/sales_data_platform.egg-info/dependency_links.txt
+src/sales_data_platform.egg-info/requires.txt
+src/sales_data_platform.egg-info/top_level.txt
+src/sales_platform/__init__.py
+src/sales_platform/config.py
+src/sales_platform/dq_rules.py
+src/sales_platform/scd2.py
+tests/test_config.py
+tests/test_dq_rules.py

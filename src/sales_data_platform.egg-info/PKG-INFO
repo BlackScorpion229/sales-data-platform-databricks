@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: sales-data-platform
+Version: 1.0.0
+Summary: Sales Revenue & Customer Analytics — Databricks Lakehouse (medallion architecture)
+Requires-Python: >=3.10
+Provides-Extra: dev
+Requires-Dist: pytest>=7; extra == "dev"

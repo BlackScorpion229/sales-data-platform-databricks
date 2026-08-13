@@ -1,27 +1,27 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 02 — Bronze Layer: Ingestion
+# MAGIC # 02 — Bronze Layer: Auto Loader Ingestion
 # MAGIC
-# MAGIC **Purpose:** Ingest raw files from the landing zone into Bronze Delta tables
-# MAGIC using **Auto Loader** (incremental file discovery) with a **batch fallback**.
+# MAGIC **Purpose:** Ingests the raw ERP exports from the **UC volume landing zone**
+# MAGIC (`/Volumes/workspace/sales_data/raw_data`) into the `bronze.*` Delta tables
+# MAGIC using **Auto Loader** (`cloudFiles`):
+# MAGIC - **Incremental + exactly-once**: checkpoints under the volume track every
+# MAGIC   file — new files (e.g. notebook 10's "next-day" exports) are picked up
+# MAGIC   automatically, nothing is re-read
+# MAGIC - **Multi-format**: CSV (most ERP exports) and JSON (`erp/region`)
+# MAGIC - **Schema evolution**: `addNewColumns` + late-data rescue
+# MAGIC - **Audit columns**: ingestion timestamp, source file, batch ID, source
+# MAGIC   system, and a record hash for downstream dedup
+# MAGIC - **Dedup on ingest**: by `_record_hash` (content hash) — re-ingesting the
+# MAGIC   same content (e.g. a re-run of `01`) adds nothing; duplicate rows a
+# MAGIC   source shipped twice collapse to one
+# MAGIC - **Delta history**: every batch is a new table version (time travel)
 # MAGIC
-# MAGIC **Medallion principle — Bronze is a "near-raw" copy:**
-# MAGIC - Data is preserved **as received** (no business transformation)
-# MAGIC - **Audit columns** are added: ingestion timestamp, source file, batch ID,
-# MAGIC   source system, and a record hash (for downstream dedup)
-# MAGIC - **Schema evolution** is enabled (`addNewColumns`) — new source columns
-# MAGIC   don't break the pipeline; they get appended automatically
-# MAGIC - Full history is retained in Delta Lake (time travel / `DESCRIBE HISTORY`)
+# MAGIC **Run `00` then `01` first.**
 # MAGIC
-# MAGIC **Auto Loader vs plain `spark.read`:**
-# MAGIC - Auto Loader discovers **only new files** across runs (incremental by design)
-# MAGIC - It keeps a **checkpoint** (its own state) + **schema inference location**
-# MAGIC - `trigger(availableNow=True)` = process everything discovered, then stop
-# MAGIC   (batch-style, perfect for daily jobs — no always-on streaming cost)
-# MAGIC
-# MAGIC **Fallback:** if Auto Loader is unavailable in the workspace, the notebook
-# MAGIC automatically falls back to plain batch `spark.read` (set
-# MAGIC `USE_AUTO_LOADER = False` to force it).
+# MAGIC ⚠️ **Serverless note:** if `cloudFiles` is unavailable on your compute,
+# MAGIC notebook falls back to a plain `spark.read.csv / json` batch load
+# MAGIC (audit columns + dedup preserved) — the rest of the pipeline is unchanged.
 
 # COMMAND ----------
 
@@ -30,181 +30,197 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1. Ingestion config
+# MAGIC ## 1. Auto Loader configuration
+# MAGIC Every dataset maps a raw folder (written by `01`) to a bronze table.
+# MAGIC The `transactions` dataset is partitioned by `dt` (the daily-batch marker
+# MAGIC extracted from the `dt=YYYY-MM-DD/` folder names).
 
 # COMMAND ----------
 
-USE_AUTO_LOADER = True   # set False to force the plain-batch fallback
-
-# batch identifier for this load run — stamped on every row for auditability
+import time
 from datetime import datetime
+from pyspark.sql import functions as F
+
+AUTO_LOADER = {
+    "customer":       {"path": RAW_CUSTOMER,       "table": "bronze.erp_customer",      "format": "csv"},
+    "product":        {"path": RAW_PRODUCT,        "table": "bronze.erp_product",       "format": "csv"},
+    "region":         {"path": f"{RAW_BASE}/erp/region",       "table": "bronze.erp_region",        "format": "json"},
+    "sales_rep":      {"path": f"{RAW_BASE}/erp/sales_rep",    "table": "bronze.erp_sales_rep",     "format": "csv"},
+    "currency":       {"path": f"{RAW_BASE}/erp/currency",     "table": "bronze.erp_currency",      "format": "csv"},
+    "order":          {"path": f"{RAW_BASE}/orders",           "table": "bronze.sales_order",       "format": "csv"},
+    "transaction":    {"path": RAW_TRANSACT,       "table": "bronze.sales_transaction", "format": "csv", "partitioned": True},
+}
+
+# Audit columns added to every row on ingest (the Bronze "receipt")
 BATCH_ID = f"BATCH_{datetime.now():%Y%m%d_%H%M%S}"
-SOURCE_SYSTEM = "ERP"
+AUDIT_COLS = {
+    "_ingestion_timestamp": F.current_timestamp(),
+    "_source_system":       F.lit("ERP"),
+    "_batch_id":            F.lit(BATCH_ID),
+}
 
-# (source folder, target table, checkpoint, format) for each dataset
-INGESTIONS = [
-    (RAW_CUSTOMER, TABLES["bronze_customer"],  f"{CHECKPOINT_BASE}/customer", "csv"),
-    (RAW_PRODUCT,  TABLES["bronze_product"],   f"{CHECKPOINT_BASE}/product", "csv"),
-    (f"{RAW_BASE}/orders", TABLES["bronze_order"], f"{CHECKPOINT_BASE}/order", "csv"),
-    (RAW_TRANSACT, TABLES["bronze_transaction"], f"{CHECKPOINT_BASE}/transaction", "csv"),
-    (f"{RAW_BASE}/erp/region",    "bronze.erp_region",    f"{CHECKPOINT_BASE}/region", "json"),
-    (f"{RAW_BASE}/erp/sales_rep", "bronze.erp_sales_rep", f"{CHECKPOINT_BASE}/sales_rep", "csv"),
-    (f"{RAW_BASE}/erp/currency",  "bronze.erp_currency",  f"{CHECKPOINT_BASE}/currency", "csv"),
-]
+# Column sets used to build the record hash (same columns the generator wrote)
+CUST_COLS = ["customer_id", "customer_name", "customer_type", "customer_segment", "country",
+             "state", "city", "region", "industry", "sales_rep_id", "customer_status",
+             "created_date", "updated_date"]
+PROD_COLS = ["product_id", "product_name", "product_category", "product_subcategory", "brand",
+             "unit_price", "cost", "product_status", "effective_date", "updated_date"]
+ORD_COLS  = ["order_id", "customer_id", "order_date", "order_status", "total_amount", "currency",
+             "region_id", "sales_rep_id", "source_system"]
+TXN_COLS  = ["transaction_id", "order_id", "transaction_date", "customer_id", "product_id",
+             "quantity", "unit_price", "discount", "tax", "gross_amount", "net_amount",
+             "currency", "region_id", "sales_rep_id", "transaction_status", "source_system"]
+REP_COLS  = ["sales_rep_id", "sales_rep_name", "region_id", "sales_rep_email", "hire_date", "status"]
+CUR_COLS  = ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date"]
+REG_COLS  = ["region_id", "region_name", "country", "state", "territory"]
 
-# COMMAND ----------
+DATA_COLS = {
+    "customer":    CUST_COLS,
+    "product":     PROD_COLS,
+    "region":      REG_COLS,
+    "sales_rep":   REP_COLS,
+    "currency":    CUR_COLS,
+    "order":       ORD_COLS,
+    "transaction": TXN_COLS,
+}
 
-# MAGIC %md
-# MAGIC ## 2. Generic ingest function
-# MAGIC One reusable function ingests every dataset — the same pattern you would
-# MAGIC deploy for N source systems with zero extra code. A `fmt` parameter
-# MAGIC handles mixed source formats: CSV everywhere except `erp/region`, which
-# MAGIC arrives as JSON.
-
-# COMMAND ----------
-
-from pyspark.sql import functions as F
-
-def ingest_to_bronze(source_path, target_table, checkpoint_path, fmt="csv", use_autoloader=USE_AUTO_LOADER):
-    """Incremental file ingestion into a bronze Delta table with audit columns."""
-    data_cols = None
-    if use_autoloader:
-        try:
-            stream_reader = (
-                spark.readStream
-                .format("cloudFiles")
-                .option("cloudFiles.format", fmt)
-                .option("cloudFiles.schemaLocation", checkpoint_path)          # schema evolution state
-                .option("cloudFiles.schemaEvolutionMode", "addNewColumns")     # accept new source columns
-            )
-            if fmt == "csv":
-                stream_reader = stream_reader.option("header", "true").option("inferSchema", "true")
-            stream = stream_reader.load(source_path)
-            data_cols = [c for c in stream.columns if not c.startswith("_")]
-        except Exception as e:
-            print(f"  [!] Auto Loader unavailable ({e}) — falling back to batch read")
-            use_autoloader = False
-
-    if use_autoloader:
-        audit = (
-            stream
-            .withColumn("_ingestion_timestamp", F.current_timestamp())
-            .withColumn("_source_file",        F.input_file_name())
-            .withColumn("_source_system",      F.lit(SOURCE_SYSTEM))
-            .withColumn("_batch_id",           F.lit(BATCH_ID))
-            .withColumn("_record_hash",        F.sha2(F.concat_ws("|", *[F.col(c).cast("string") for c in data_cols]), 256))
-        )
-        query = (
-            audit.writeStream
-            .option("checkpointLocation", checkpoint_path)
-            .trigger(availableNow=True)                 # batch-like run, stops when done
-            .toTable(target_table)
-        )
-        query.awaitTermination()
-        mode = "AUTO LOADER (streaming)"
-    else:
-        if fmt == "csv":
-            raw = spark.read.csv(source_path, header=True, inferSchema=True)
-        else:
-            raw = spark.read.format(fmt).load(source_path)
-        audit = (
-            raw
-            .withColumn("_ingestion_timestamp", F.current_timestamp())
-            .withColumn("_source_file",        F.input_file_name())
-            .withColumn("_source_system",      F.lit(SOURCE_SYSTEM))
-            .withColumn("_batch_id",           F.lit(BATCH_ID))
-            .withColumn("_record_hash",        F.sha2(F.concat_ws("|", *[F.col(c).cast("string") for c in raw.columns if not c.startswith("_")]), 256))
-        )
-        audit.write.mode("append").saveAsTable(target_table)
-        mode = "BATCH (spark.read)"
-
-    count = spark.read.table(target_table).count()
-    print(f"  [{mode}] {source_path} -> {target_table}  (total rows now: {count:,})")
+# Schema-evolution friendly settings (kept deliberately loose — Silver enforces quality)
+spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2b. Checkpoint — landing zone BEFORE ingestion
-# MAGIC Fail-fast inventory: every source folder must contain files before it is
-# MAGIC consumed. Empty folders are skipped with a warning, never silently
-# MAGIC streamed as "0 rows". (Run `01_Generate_Synthetic_ERP_Data` first.)
+# MAGIC ## 2. Ingest with Auto Loader (`cloudFiles`)
+# MAGIC One incremental stream per dataset. Each stream:
+# MAGIC 1. reads files with `cloudFiles` (checkpoint under `_checkpoints/`),
+# MAGIC 2. stamps audit columns + `_source_file` (from the file path),
+# MAGIC 3. adds `dt` for transactions (parsed from `dt=YYYY-MM-DD/` folders),
+# MAGIC 4. computes `_record_hash` (dedup key),
+# MAGIC 5. drops `_rescued_data` (late-schema-change column),
+# MAGIC 6. dedupes on `_record_hash` (content hash) and writes to the Delta table.
 
 # COMMAND ----------
 
-def ls_r(path, max_depth=2, _depth=0):
-    """Recursively list files under a DBFS path (tolerant of missing paths)."""
-    files = []
-    if _depth > max_depth:
-        return files
+def ingest_stream(dataset, cfg):
+    """Run one Auto Loader stream; returns (rows_written, error_or_None)."""
+    checkpoint = f"{CHECKPOINT_BASE}/{dataset}"
+    reader = (
+        spark.readStream.format("cloudFiles")
+        .option("cloudFiles.format", cfg["format"])
+        .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
+        .option("cloudFiles.rescuedDataColumnName", "_rescued_data")
+        .option("cloudFiles.inferColumnTypes", "true")
+        .option("cloudFiles.checkpointLocation", checkpoint)
+    )
+    if cfg["format"] == "csv":
+        reader = reader.option("header", "true")
+
+    df = reader.load(cfg["path"])
+
+    if cfg.get("partitioned"):
+        df = df.withColumn("dt", F.to_date(F.regexp_extract(F.input_file_name(), r"dt=(\d{4}-\d{2}-\d{2})", 1)))
+
+    data_cols = DATA_COLS[dataset]
+    df = (
+        df.withColumn("_source_file", F.input_file_name())
+          .withColumns(AUDIT_COLS)
+          .withColumn("_record_hash",
+                      F.sha2(F.concat_ws("|", *[F.col(c).cast("string") for c in data_cols]), 256))
+          .drop("_rescued_data")
+          .dropDuplicates(["_record_hash"])
+    )
+
+    q = (
+        df.writeStream
+          .option("checkpointLocation", checkpoint)
+    )
+    if cfg.get("partitioned"):
+        q = q.partitionBy("dt")
+    q = q.trigger(availableNow=True).toTable(cfg["table"])
+    return q
+
+streams = {}
+for dataset, cfg in AUTO_LOADER.items():
     try:
-        for e in sorted(dbutils.fs.ls(path), key=lambda x: x.path):
-            if e.isDir():
-                files.extend(ls_r(e.path, max_depth, _depth + 1))
-            else:
-                files.append(e.path)
-    except Exception:
-        pass
-    return files
+        streams[dataset] = ingest_stream(dataset, cfg)
+        print(f"  stream started: {dataset:12s} -> {cfg['table']}  (checkpoint: {CHECKPOINT_BASE}/{dataset})")
+    except Exception as e:
+        print(f"  ! cloudFiles failed for {dataset}: {type(e).__name__}: {e}")
+        streams[dataset] = None
 
-def inventory(label, paths):
-    """Print a per-folder file count — the landing-zone checkpoint."""
-    total = 0
-    print(f"== {label} ==")
-    for p in paths:
-        try:
-            dbutils.fs.ls(p)
-        except Exception:
-            print(f"  {p}  ->  NOT CREATED YET")
-            continue
-        files = ls_r(p)
-        total += len(files)
-        print(f"  {p}  ->  {len(files):>6,} file(s)" + ("  (EMPTY)" if not files else ""))
-    print(f"  TOTAL: {total:,} file(s) in landing zone")
-    print()
-
-inventory("Landing zone BEFORE ingestion", [src for src, _, _, _ in INGESTIONS])
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 3. Run ingestion for all datasets
-
-# COMMAND ----------
-
-for src, tgt, ckpt, fmt in INGESTIONS:
-    n_files = len(ls_r(src))
-    if n_files == 0:
-        print(f"! SKIPPED {src}: no files found — run notebook 01 first")
+for name, q in streams.items():
+    if q is None:
         continue
-    print(f"> Ingesting {src} ({fmt}) — {n_files} file(s)")
-    ingest_to_bronze(src, tgt, ckpt, fmt=fmt)
+    q.awaitAnyTermination()
 
-print("\nBatch ID:", BATCH_ID)
+failed = [n for n, q in streams.items() if q is not None and q.lastProgress is None and not q.isActive]
+for n in failed:
+    print(f"  ! stream failed: {n}")
 
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 4. Verify — raw data + audit columns, as received
-
-# COMMAND ----------
-
-from pyspark.sql import functions as F
-
-for name, tbl in [("customer", TABLES["bronze_customer"]),
-                  ("product",  TABLES["bronze_product"]),
-                  ("transaction", TABLES["bronze_transaction"]),
-                  ("order",    TABLES["bronze_order"])]:
-    df = spark.read.table(tbl)
-    print(f"--- bronze.erp_{name}: {df.count():,} rows, {len(df.columns)} cols")
-    df.orderBy(F.col("_ingestion_timestamp").desc()).show(3, truncate=False, vertical=True)
-    print()
+print(f"\nBatch ID: {BATCH_ID}")
+print("Auto Loader ingestion complete." if not failed else "Auto Loader ingestion had failures — check the batch fallback below.")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Delta history (time travel + auditability)
-# MAGIC Every ingest run is a new version. `DESCRIBE HISTORY` proves Bronze retains
-# MAGIC full lineage — and enables `VERSION AS OF` time travel queries.
+# MAGIC ### 2b. Batch fallback (if `cloudFiles` is unavailable on this compute)
+# MAGIC Read the same volume folders with plain `spark.read.csv / json` and write
+# MAGIC with the identical audit pipeline — same schema, same dedup, same result.
+
+# COMMAND ----------
+
+FALLBACK_MODE = any(q is None for q in streams.values())
+
+def batch_load(dataset, cfg):
+    """Plain spark.read of a raw folder with the same audit+dedup pipeline."""
+    read_opts = {}
+    if cfg["format"] == "csv":
+        read_opts = {"header": "true", "inferSchema": "true"}
+        df = spark.read.csv(cfg["path"], **read_opts)
+    else:
+        df = spark.read.json(cfg["path"])
+
+    if cfg.get("partitioned"):
+        df = df.withColumn("dt", F.to_date(F.regexp_extract(F.input_file_name(), r"dt=(\d{4}-\d{2}-\d{2})", 1)))
+
+    data_cols = DATA_COLS[dataset]
+    df = (
+        df.withColumn("_source_file", F.input_file_name())
+          .withColumns(AUDIT_COLS)
+          .withColumn("_record_hash",
+                      F.sha2(F.concat_ws("|", *[F.col(c).cast("string") for c in data_cols]), 256))
+          .dropDuplicates(["_record_hash"])
+    )
+    return df
+
+if FALLBACK_MODE:
+    print("FALLBACK: streaming unavailable — running batch ingestion.")
+    for dataset, cfg in AUTO_LOADER.items():
+        n = batch_load(dataset, cfg).write.mode("overwrite").option("mergeSchema", "true").saveAsTable(cfg["table"])
+        print(f"  loaded {dataset:12s} -> {cfg['table']}")
+else:
+    print("No fallback needed — Auto Loader streams succeeded.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 3. Ingestion checkpoints
+# MAGIC Proves every bronze table is populated and stamped with the audit columns.
+
+# COMMAND ----------
+
+print("Bronze tables after ingestion:")
+for name, tbl in sorted(AUTO_LOADER.items(), key=lambda x: x[1]["table"]):
+    df = spark.read.table(tbl["table"])
+    audit = [c for c in df.columns if c.startswith("_")]
+    print(f"  {tbl['table']:42s} {df.count():>10,} rows  |  {len(df.columns)} cols  |  audit: {','.join(audit) or 'MISSING'}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 4. Delta history (time travel + auditability)
+# MAGIC Every ingest run is a new table version. `DESCRIBE HISTORY` proves Bronze
+# MAGIC retains full lineage — and enables `VERSION AS OF` time travel queries.
 
 # COMMAND ----------
 
@@ -214,7 +230,7 @@ for name, tbl in [("customer", TABLES["bronze_customer"]),
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 6. Health check — a quick data-quality snapshot at the source
+# MAGIC ## 5. Health check — a quick data-quality snapshot at the source
 # MAGIC (This is *observation*, not cleanup — cleansing happens in Silver.)
 
 # COMMAND ----------
@@ -236,10 +252,10 @@ for name, tbl in [("customer", TABLES["bronze_customer"]),
 # MAGIC %md
 # MAGIC ---
 # MAGIC **Key takeaways for the portfolio:**
-# MAGIC - Auto Loader = zero-code incremental discovery via checkpoints (no timestamps needed)
-# MAGIC - Audit columns make Bronze **forensic**: every row knows *when*, *from where*,
-# MAGIC   *in which batch*, and a hash for later dedup
-# MAGIC - `addNewColumns` schema evolution = sources can change without breaking the pipeline
+# MAGIC - Bronze is a **forensic near-raw copy**: every row carries *when*, *from
+# MAGIC   where*, *in which batch*, and a hash for later dedup — stamped by Auto
+# MAGIC   Loader exactly-once semantics
+# MAGIC - Auto Loader checkpoints make ingestion **incremental by design**: new
+# MAGIC   files (notebook 10's "next-day" demo) are discovered automatically
 # MAGIC - Delta history gives **time travel** out of the box
-# MAGIC
-# MAGIC **Next:** `03_Silver_Cleansing` — dedup, DQ validation, quarantine, standardization.
+# MAGIC - **Next:** `03_Silver_Cleansing` — dedup, DQ validation, quarantine, standardization.

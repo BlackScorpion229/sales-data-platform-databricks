@@ -6,13 +6,17 @@
 # MAGIC
 # MAGIC **Purpose:** One-time environment setup for the entire platform:
 # MAGIC - Creates the Medallion schemas: `bronze` → `silver` → `gold`
-# MAGIC - Defines the raw-data landing zone on DBFS (simulates the ERP source system)
+# MAGIC - Creates the **Unity Catalog volume** that hosts the raw-data landing
+# MAGIC   zone (serverless-compatible: the public DBFS root `/FileStore` is
+# MAGIC   disabled on serverless, so raw files live in a UC volume instead)
 # MAGIC - Centralizes configuration used by every downstream notebook
 # MAGIC
-# MAGIC **Note on Unity Catalog:** In a production workspace this maps to
-# MAGIC `sales_catalog.bronze / sales_catalog.silver / sales_catalog.gold`.
-# MAGIC Community Edition has no Unity Catalog, so we use `hive_metastore` schemas —
-# MAGIC the medallion pattern is identical.
+# MAGIC **Note on Unity Catalog:** Community Edition now provides a managed
+# MAGIC `workspace` catalog, but this project keeps the documented `hive_metastore`
+# MAGIC schema design — the medallion pattern is identical either way. The **raw
+# MAGIC file layer** uses a UC volume under the `workspace` catalog
+# MAGIC (`workspace.sales_data.raw_data`), which both dbutils and Auto Loader
+# MAGIC support on serverless.
 # MAGIC
 # MAGIC **Run order:** this notebook first, then every notebook in numeric order.
 
@@ -35,17 +39,19 @@ BRONZE  = f"{CATALOG}.bronze"
 SILVER  = f"{CATALOG}.silver"
 GOLD    = f"{CATALOG}.gold"
 
-# Raw landing zone — simulates files exported from the ERP / transaction systems
-# Layout mirrors a daily batch export:
-#   /FileStore/raw_data/erp/customer/
-#   /FileStore/raw_data/erp/product/
-#   /FileStore/raw_data/transactions/dt=YYYY-MM-DD/
-RAW_BASE      = "/FileStore/raw_data"
-RAW_CUSTOMER  = f"{RAW_BASE}/erp/customer"
-RAW_PRODUCT   = f"{RAW_BASE}/erp/product"
-RAW_TRANSACT  = f"{RAW_BASE}/transactions"
+# Raw-data landing zone — a Unity Catalog volume (serverless-compatible)
+# The public DBFS root (`/FileStore`) is disabled on serverless compute, so the
+# ERP export files live in a UC volume instead. Layout mirrors a daily batch:
+#   /Volumes/workspace/sales_data/raw_data/erp/customer/
+#   /Volumes/workspace/sales_data/raw_data/erp/product/
+#   /Volumes/workspace/sales_data/raw_data/transactions/dt=YYYY-MM-DD/
+VOLUME_RAW   = "/Volumes/workspace/sales_data/raw_data"
+RAW_BASE     = VOLUME_RAW
+RAW_CUSTOMER = f"{RAW_BASE}/erp/customer"
+RAW_PRODUCT  = f"{RAW_BASE}/erp/product"
+RAW_TRANSACT = f"{RAW_BASE}/transactions"
 
-# Auto Loader checkpoint + schema-evolution location
+# Auto Loader checkpoint + schema-evolution location (inside the volume)
 CHECKPOINT_BASE = f"{RAW_BASE}/_checkpoints"
 
 # Tables
@@ -75,7 +81,7 @@ BUDGET_DAILY       = 60000  # daily revenue budget/target for actual-vs-budget a
 print("Config loaded:")
 for k, v in TABLES.items():
     print(f"  {k:20s} -> {v}")
-print(f"  Raw data base        -> {RAW_BASE}")
+print(f"  Raw data base        -> {RAW_BASE}  (UC volume, serverless-compatible)")
 print(f"  Checkpoint base      -> {CHECKPOINT_BASE}")
 
 # COMMAND ----------
@@ -100,12 +106,26 @@ print(f"  Checkpoint base      -> {CHECKPOINT_BASE}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Prepare the raw-data landing zone
-# MAGIC Creates the directory structure that `01_Generate_Synthetic_ERP_Data`
-# MAGIC will populate.
+# MAGIC ## 3. Raw-data landing zone in a Unity Catalog volume
+# MAGIC Serverless compute disables the public DBFS root (`/FileStore`), so the
+# MAGIC ERP export files live in a **UC volume** — `dbutils.fs`
+# MAGIC (`mkdirs`/`ls`/`rm`), `spark.read` and **Auto Loader** all support
+# MAGIC `/Volumes/...` paths on serverless.
+# MAGIC
+# MAGIC - The `raw_data` volume is created *if not exists* (idempotent) under
+# MAGIC   the `workspace` catalog → `workspace.sales_data.raw_data`
+# MAGIC - `01` writes the synthetic ERP exports there (CSV + one JSON folder)
+# MAGIC - `02` ingests them with Auto Loader (checkpoints under the volume)
+# MAGIC - `10` appends "next-day" files for the incremental demo
 # MAGIC
 # MAGIC ⚠️ Set `RESET_LANDING_ZONE = True` **only** if you want to wipe and
-# MAGIC regenerate everything from scratch — it deletes the raw data + checkpoints.
+# MAGIC regenerate everything from scratch — it deletes raw data + checkpoints.
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC CREATE SCHEMA IF NOT EXISTS workspace.sales_data COMMENT 'Raw-data landing zone for the sales platform';
+# MAGIC CREATE VOLUME IF NOT EXISTS workspace.sales_data.raw_data COMMENT 'ERP export files (serverless-compatible replacement for DBFS /FileStore)';
 
 # COMMAND ----------
 
@@ -113,16 +133,18 @@ RESET_LANDING_ZONE = False
 
 if RESET_LANDING_ZONE:
     dbutils.fs.rm(RAW_BASE, recurse=True)
-for path in [RAW_CUSTOMER, RAW_PRODUCT, RAW_TRANSACT, f"{RAW_BASE}/orders", CHECKPOINT_BASE]:
+for path in [RAW_CUSTOMER, RAW_PRODUCT, RAW_TRANSACT, f"{RAW_BASE}/erp/customer_updates",
+             f"{RAW_BASE}/erp/region", f"{RAW_BASE}/erp/sales_rep", f"{RAW_BASE}/erp/currency",
+             f"{RAW_BASE}/orders", CHECKPOINT_BASE]:
     dbutils.fs.mkdirs(path)
-print("Landing zone ready:")
+print("Landing zone ready (UC volume):")
 dbutils.fs.ls(RAW_BASE)
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## 4. Environment summary
-# MAGIC Verify the runtime — Community Edition clusters run DBR 12+ with Delta
+# MAGIC Verify the runtime — serverless compute runs a recent DBR with Delta
 # MAGIC Lake built in (no `%pip install delta` needed).
 
 # COMMAND ----------
