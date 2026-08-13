@@ -51,6 +51,10 @@
 
 # COMMAND ----------
 
+# MAGIC %run ./00_Setup_Workspace
+
+# COMMAND ----------
+
 import random
 from datetime import date, datetime, timedelta
 
