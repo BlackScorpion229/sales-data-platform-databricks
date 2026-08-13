@@ -84,8 +84,9 @@ DATA_COLS = {
     "transaction": TXN_COLS,
 }
 
-# Schema-evolution friendly settings (kept deliberately loose — Silver enforces quality)
-spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
+# Schema evolution is enabled per-write via `.option("mergeSchema", "true")`
+# below — serverless does not allow setting
+# `spark.databricks.delta.schema.autoMerge.enabled` as a session config.
 
 # COMMAND ----------
 
@@ -133,6 +134,7 @@ def ingest_stream(dataset, cfg):
     q = (
         df.writeStream
           .option("checkpointLocation", checkpoint)
+          .option("mergeSchema", "true")
     )
     if cfg.get("partitioned"):
         q = q.partitionBy("dt")
