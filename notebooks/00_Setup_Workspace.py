@@ -151,12 +151,18 @@ dbutils.fs.ls(RAW_BASE)
 
 from datetime import date
 
+def spark_conf(key, default):
+    try:
+        return spark.conf.get(key, default)
+    except Exception:
+        return default
+
 spark_version = spark.version
-dbr_version = spark.conf.get("spark.databricks.clusterUsageTags.sparkVersion", "n/a")
-runtime = spark.conf.get("spark.databricks.clusterUsageTags.clusterType", "n/a")
+dbr_version = spark_conf("spark.databricks.clusterUsageTags.sparkVersion", "n/a (serverless)")
+runtime = spark_conf("spark.databricks.clusterUsageTags.clusterType", "serverless (Spark Connect)")
 print(f"Spark version : {spark_version}")
 print(f"DBR version   : {dbr_version}")
-print(f"Runtime       : {runtime} (serverless = Spark Connect)")
+print(f"Runtime       : {runtime}")
 print(f"Delta tables  : enabled (built into DBR)")
 print(f"Current date  : {date.today().isoformat()}")
 
