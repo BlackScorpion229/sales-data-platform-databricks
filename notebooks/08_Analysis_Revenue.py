@@ -20,39 +20,38 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC -- Revenue, orders, customers, AOV, profit — for the last complete month
-# MAGIC WITH last_month AS (
-# MAGIC   SELECT MAX(d.year_month) AS ym
-# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.fact_sales f JOIN SalesRevenueCustomerAnalytics.gold.dim_date d ON f.date_key = d.date_key
-# MAGIC   WHERE d.calendar_date <= CURRENT_DATE
-# MAGIC ),
-# MAGIC m AS (
-# MAGIC   SELECT d.year_month,
-# MAGIC          SUM(f.net_sales)      AS revenue,
-# MAGIC          SUM(f.profit_amount)  AS profit,
-# MAGIC          COUNT(DISTINCT f.order_id) AS orders,
-# MAGIC          COUNT(DISTINCT f.customer_key) AS customers
-# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.fact_sales f
-# MAGIC   JOIN SalesRevenueCustomerAnalytics.gold.dim_date d ON f.date_key = d.date_key
-# MAGIC   WHERE d.year_month = (SELECT ym FROM last_month)
-# MAGIC   GROUP BY d.year_month
-# MAGIC ),
-# MAGIC prev AS (
-# MAGIC   SELECT SUM(f.net_sales) AS revenue
-# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.fact_sales f
-# MAGIC   JOIN SalesRevenueCustomerAnalytics.gold.dim_date d ON f.date_key = d.date_key
-# MAGIC   WHERE d.year_month = date_format(add_months(to_date((SELECT ym || '-01' FROM last_month)), -1), 'yyyy-MM')
-# MAGIC )
-# MAGIC SELECT
-# MAGIC   ROUND(m.revenue, 0)                                   AS total_revenue,
-# MAGIC   ROUND((m.revenue - p.revenue) / p.revenue * 100, 2)   AS revenue_growth_pct,
-# MAGIC   m.orders                                              AS total_orders,
-# MAGIC   m.customers                                           AS total_customers,
-# MAGIC   ROUND(m.revenue / m.orders, 2)                        AS avg_order_value,
-# MAGIC   ROUND(m.profit, 0)                                    AS profit
-# MAGIC FROM m CROSS JOIN prev p;
 
+display(spark.sql(f"""-- Revenue, orders, customers, AOV, profit — for the last complete month
+WITH last_month AS (
+  SELECT MAX(d.year_month) AS ym
+  FROM {GOLD}.fact_sales f JOIN {GOLD}.dim_date d ON f.date_key = d.date_key
+  WHERE d.calendar_date <= CURRENT_DATE
+),
+m AS (
+  SELECT d.year_month,
+         SUM(f.net_sales)      AS revenue,
+         SUM(f.profit_amount)  AS profit,
+         COUNT(DISTINCT f.order_id) AS orders,
+         COUNT(DISTINCT f.customer_key) AS customers
+  FROM {GOLD}.fact_sales f
+  JOIN {GOLD}.dim_date d ON f.date_key = d.date_key
+  WHERE d.year_month = (SELECT ym FROM last_month)
+  GROUP BY d.year_month
+),
+prev AS (
+  SELECT SUM(f.net_sales) AS revenue
+  FROM {GOLD}.fact_sales f
+  JOIN {GOLD}.dim_date d ON f.date_key = d.date_key
+  WHERE d.year_month = date_format(add_months(to_date((SELECT ym || '-01' FROM last_month)), -1), 'yyyy-MM')
+)
+SELECT
+  ROUND(m.revenue, 0)                                   AS total_revenue,
+  ROUND((m.revenue - p.revenue) / p.revenue * 100, 2)   AS revenue_growth_pct,
+  m.orders                                              AS total_orders,
+  m.customers                                           AS total_customers,
+  ROUND(m.revenue / m.orders, 2)                        AS avg_order_value,
+  ROUND(m.profit, 0)                                    AS profit
+FROM m CROSS JOIN prev p;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -60,16 +59,15 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT d.year_month AS month,
-# MAGIC        ROUND(SUM(f.net_sales), 0)     AS revenue,
-# MAGIC        ROUND(SUM(f.profit_amount), 0) AS profit,
-# MAGIC        COUNT(DISTINCT f.order_id)     AS orders
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.fact_sales f
-# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_date d ON f.date_key = d.date_key
-# MAGIC GROUP BY d.year_month
-# MAGIC ORDER BY d.year_month;
 
+display(spark.sql(f"""SELECT d.year_month AS month,
+       ROUND(SUM(f.net_sales), 0)     AS revenue,
+       ROUND(SUM(f.profit_amount), 0) AS profit,
+       COUNT(DISTINCT f.order_id)     AS orders
+FROM {GOLD}.fact_sales f
+JOIN {GOLD}.dim_date d ON f.date_key = d.date_key
+GROUP BY d.year_month
+ORDER BY d.year_month;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -77,15 +75,14 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT r.region_name,
-# MAGIC        ROUND(SUM(f.net_sales), 0) AS revenue,
-# MAGIC        ROUND(SUM(f.net_sales) * 100.0 / SUM(SUM(f.net_sales)) OVER (), 2) AS share_pct
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.fact_sales f
-# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_region r ON f.region_key = r.region_key
-# MAGIC GROUP BY r.region_name
-# MAGIC ORDER BY revenue DESC;
 
+display(spark.sql(f"""SELECT r.region_name,
+       ROUND(SUM(f.net_sales), 0) AS revenue,
+       ROUND(SUM(f.net_sales) * 100.0 / SUM(SUM(f.net_sales)) OVER (), 2) AS share_pct
+FROM {GOLD}.fact_sales f
+JOIN {GOLD}.dim_region r ON f.region_key = r.region_key
+GROUP BY r.region_name
+ORDER BY revenue DESC;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -93,27 +90,25 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT p.product_category,
-# MAGIC        ROUND(SUM(f.net_sales), 0) AS revenue,
-# MAGIC        SUM(f.quantity)            AS units
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.fact_sales f
-# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_product p ON f.product_key = p.product_key
-# MAGIC GROUP BY p.product_category
-# MAGIC ORDER BY revenue DESC;
 
+display(spark.sql(f"""SELECT p.product_category,
+       ROUND(SUM(f.net_sales), 0) AS revenue,
+       SUM(f.quantity)            AS units
+FROM {GOLD}.fact_sales f
+JOIN {GOLD}.dim_product p ON f.product_key = p.product_key
+GROUP BY p.product_category
+ORDER BY revenue DESC;"""))
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT c.customer_segment,
-# MAGIC        ROUND(SUM(f.net_sales), 0) AS revenue,
-# MAGIC        COUNT(DISTINCT f.customer_key) AS customers
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.fact_sales f
-# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_customer c ON f.customer_key = c.customer_key
-# MAGIC WHERE c.is_current = true
-# MAGIC GROUP BY c.customer_segment
-# MAGIC ORDER BY revenue DESC;
 
+display(spark.sql(f"""SELECT c.customer_segment,
+       ROUND(SUM(f.net_sales), 0) AS revenue,
+       COUNT(DISTINCT f.customer_key) AS customers
+FROM {GOLD}.fact_sales f
+JOIN {GOLD}.dim_customer c ON f.customer_key = c.customer_key
+WHERE c.is_current = true
+GROUP BY c.customer_segment
+ORDER BY revenue DESC;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -121,29 +116,27 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT c.customer_name,
-# MAGIC        ROUND(SUM(f.net_sales), 2) AS revenue,
-# MAGIC        COUNT(DISTINCT f.order_id) AS orders
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.fact_sales f
-# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_customer c ON f.customer_key = c.customer_key
-# MAGIC WHERE c.is_current = true
-# MAGIC GROUP BY c.customer_name
-# MAGIC ORDER BY revenue DESC
-# MAGIC LIMIT 10;
 
+display(spark.sql(f"""SELECT c.customer_name,
+       ROUND(SUM(f.net_sales), 2) AS revenue,
+       COUNT(DISTINCT f.order_id) AS orders
+FROM {GOLD}.fact_sales f
+JOIN {GOLD}.dim_customer c ON f.customer_key = c.customer_key
+WHERE c.is_current = true
+GROUP BY c.customer_name
+ORDER BY revenue DESC
+LIMIT 10;"""))
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT p.product_name,
-# MAGIC        ROUND(SUM(f.net_sales), 2) AS revenue,
-# MAGIC        SUM(f.quantity)            AS units
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.fact_sales f
-# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_product p ON f.product_key = p.product_key
-# MAGIC GROUP BY p.product_name
-# MAGIC ORDER BY revenue DESC
-# MAGIC LIMIT 10;
 
+display(spark.sql(f"""SELECT p.product_name,
+       ROUND(SUM(f.net_sales), 2) AS revenue,
+       SUM(f.quantity)            AS units
+FROM {GOLD}.fact_sales f
+JOIN {GOLD}.dim_product p ON f.product_key = p.product_key
+GROUP BY p.product_name
+ORDER BY revenue DESC
+LIMIT 10;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -152,20 +145,19 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT b.year_month,
-# MAGIC        b.budget_usd,
-# MAGIC        ROUND(COALESCE(a.revenue, 0), 0)                 AS actual,
-# MAGIC        ROUND(COALESCE(a.revenue, 0) - b.budget_usd, 0)  AS variance,
-# MAGIC        ROUND((COALESCE(a.revenue, 0) - b.budget_usd) / b.budget_usd * 100, 2) AS variance_pct
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.budget_monthly b
-# MAGIC LEFT JOIN (
-# MAGIC   SELECT d.year_month, SUM(f.net_sales) AS revenue
-# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.fact_sales f JOIN SalesRevenueCustomerAnalytics.gold.dim_date d ON f.date_key = d.date_key
-# MAGIC   GROUP BY d.year_month
-# MAGIC ) a ON b.year_month = a.year_month
-# MAGIC ORDER BY b.year_month;
 
+display(spark.sql(f"""SELECT b.year_month,
+       b.budget_usd,
+       ROUND(COALESCE(a.revenue, 0), 0)                 AS actual,
+       ROUND(COALESCE(a.revenue, 0) - b.budget_usd, 0)  AS variance,
+       ROUND((COALESCE(a.revenue, 0) - b.budget_usd) / b.budget_usd * 100, 2) AS variance_pct
+FROM {GOLD}.budget_monthly b
+LEFT JOIN (
+  SELECT d.year_month, SUM(f.net_sales) AS revenue
+  FROM {GOLD}.fact_sales f JOIN {GOLD}.dim_date d ON f.date_key = d.date_key
+  GROUP BY d.year_month
+) a ON b.year_month = a.year_month
+ORDER BY b.year_month;"""))
 # COMMAND ----------
 
 # MAGIC %md

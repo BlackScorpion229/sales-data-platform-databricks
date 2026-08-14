@@ -17,18 +17,17 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC   COUNT(*)                                   AS total_customers,
-# MAGIC   SUM(CASE WHEN customer_status = 'ACTIVE' THEN 1 ELSE 0 END) AS active_customers,
-# MAGIC   COUNT(DISTINCT CASE WHEN is_new_customer THEN customer_key END) AS new_customers_last_month,
-# MAGIC   COUNT(DISTINCT CASE WHEN NOT is_new_customer AND revenue_usd > 0 THEN customer_key END) AS returning_customers,
-# MAGIC   ROUND(SUM(revenue_usd) /
-# MAGIC         NULLIF(COUNT(DISTINCT CASE WHEN revenue_usd > 0 THEN customer_key END), 0), 2) AS avg_revenue_per_customer
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.agg_customer_monthly
-# MAGIC WHERE year_month = (SELECT MAX(year_month) FROM SalesRevenueCustomerAnalytics.gold.agg_customer_monthly
-# MAGIC                     WHERE year_month < date_format(CURRENT_DATE, 'yyyy-MM'));
 
+display(spark.sql(f"""SELECT
+  COUNT(*)                                   AS total_customers,
+  SUM(CASE WHEN customer_status = 'ACTIVE' THEN 1 ELSE 0 END) AS active_customers,
+  COUNT(DISTINCT CASE WHEN is_new_customer THEN customer_key END) AS new_customers_last_month,
+  COUNT(DISTINCT CASE WHEN NOT is_new_customer AND revenue_usd > 0 THEN customer_key END) AS returning_customers,
+  ROUND(SUM(revenue_usd) /
+        NULLIF(COUNT(DISTINCT CASE WHEN revenue_usd > 0 THEN customer_key END), 0), 2) AS avg_revenue_per_customer
+FROM {GOLD}.agg_customer_monthly
+WHERE year_month = (SELECT MAX(year_month) FROM {GOLD}.agg_customer_monthly
+                    WHERE year_month < date_format(CURRENT_DATE, 'yyyy-MM'));"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -36,14 +35,13 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT year_month,
-# MAGIC        COUNT(DISTINCT CASE WHEN is_new_customer THEN customer_key END) AS new_customers,
-# MAGIC        COUNT(DISTINCT customer_key)                                     AS total_active_customers
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.agg_customer_monthly
-# MAGIC GROUP BY year_month
-# MAGIC ORDER BY year_month;
 
+display(spark.sql(f"""SELECT year_month,
+       COUNT(DISTINCT CASE WHEN is_new_customer THEN customer_key END) AS new_customers,
+       COUNT(DISTINCT customer_key)                                     AS total_active_customers
+FROM {GOLD}.agg_customer_monthly
+GROUP BY year_month
+ORDER BY year_month;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -51,14 +49,13 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT year_month,
-# MAGIC        CASE WHEN is_new_customer THEN 'New' ELSE 'Existing' END AS cohort,
-# MAGIC        ROUND(SUM(revenue_usd), 0) AS revenue
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.agg_customer_monthly
-# MAGIC GROUP BY year_month, cohort
-# MAGIC ORDER BY year_month, cohort;
 
+display(spark.sql(f"""SELECT year_month,
+       CASE WHEN is_new_customer THEN 'New' ELSE 'Existing' END AS cohort,
+       ROUND(SUM(revenue_usd), 0) AS revenue
+FROM {GOLD}.agg_customer_monthly
+GROUP BY year_month, cohort
+ORDER BY year_month, cohort;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -67,29 +64,28 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC WITH buyers AS (
-# MAGIC   SELECT DISTINCT customer_key, year_month
-# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.agg_customer_monthly
-# MAGIC   WHERE revenue_usd > 0
-# MAGIC ),
-# MAGIC joined AS (
-# MAGIC   SELECT b.year_month,
-# MAGIC          COUNT(DISTINCT b.customer_key)                                    AS buyers,
-# MAGIC          COUNT(DISTINCT CASE WHEN p.customer_key IS NOT NULL THEN b.customer_key END) AS retained
-# MAGIC   FROM buyers b
-# MAGIC   LEFT JOIN buyers p
-# MAGIC     ON b.customer_key = p.customer_key
-# MAGIC    AND p.year_month = date_format(add_months(to_date(b.year_month || '-01'), -1), 'yyyy-MM')
-# MAGIC   GROUP BY b.year_month
-# MAGIC )
-# MAGIC SELECT year_month,
-# MAGIC        buyers,
-# MAGIC        retained,
-# MAGIC        ROUND(retained * 100.0 / buyers, 2) AS retention_pct
-# MAGIC FROM joined
-# MAGIC ORDER BY year_month;
 
+display(spark.sql(f"""WITH buyers AS (
+  SELECT DISTINCT customer_key, year_month
+  FROM {GOLD}.agg_customer_monthly
+  WHERE revenue_usd > 0
+),
+joined AS (
+  SELECT b.year_month,
+         COUNT(DISTINCT b.customer_key)                                    AS buyers,
+         COUNT(DISTINCT CASE WHEN p.customer_key IS NOT NULL THEN b.customer_key END) AS retained
+  FROM buyers b
+  LEFT JOIN buyers p
+    ON b.customer_key = p.customer_key
+   AND p.year_month = date_format(add_months(to_date(b.year_month || '-01'), -1), 'yyyy-MM')
+  GROUP BY b.year_month
+)
+SELECT year_month,
+       buyers,
+       retained,
+       ROUND(retained * 100.0 / buyers, 2) AS retention_pct
+FROM joined
+ORDER BY year_month;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -97,23 +93,22 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC WITH freq AS (
-# MAGIC   SELECT customer_key, COUNT(DISTINCT order_id) AS orders
-# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.fact_sales
-# MAGIC   GROUP BY customer_key
-# MAGIC )
-# MAGIC SELECT CASE
-# MAGIC          WHEN orders = 1 THEN '1 (one-off)'
-# MAGIC          WHEN orders <= 3 THEN '2-3'
-# MAGIC          WHEN orders <= 10 THEN '4-10'
-# MAGIC          ELSE '10+' END AS frequency_band,
-# MAGIC        COUNT(*) AS customers,
-# MAGIC        MIN(orders) AS min_orders
-# MAGIC FROM freq
-# MAGIC GROUP BY frequency_band
-# MAGIC ORDER BY min_orders;
 
+display(spark.sql(f"""WITH freq AS (
+  SELECT customer_key, COUNT(DISTINCT order_id) AS orders
+  FROM {GOLD}.fact_sales
+  GROUP BY customer_key
+)
+SELECT CASE
+         WHEN orders = 1 THEN '1 (one-off)'
+         WHEN orders <= 3 THEN '2-3'
+         WHEN orders <= 10 THEN '4-10'
+         ELSE '10+' END AS frequency_band,
+       COUNT(*) AS customers,
+       MIN(orders) AS min_orders
+FROM freq
+GROUP BY frequency_band
+ORDER BY min_orders;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -121,31 +116,29 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT customer_segment_value,
-# MAGIC        COUNT(*)                          AS customers,
-# MAGIC        ROUND(SUM(lifetime_revenue), 0)  AS lifetime_revenue,
-# MAGIC        ROUND(SUM(lifetime_revenue) * 100.0 / SUM(SUM(lifetime_revenue)) OVER (), 2) AS share_pct
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.customer_segmentation
-# MAGIC GROUP BY customer_segment_value
-# MAGIC ORDER BY lifetime_revenue DESC;
 
+display(spark.sql(f"""SELECT customer_segment_value,
+       COUNT(*)                          AS customers,
+       ROUND(SUM(lifetime_revenue), 0)  AS lifetime_revenue,
+       ROUND(SUM(lifetime_revenue) * 100.0 / SUM(SUM(lifetime_revenue)) OVER (), 2) AS share_pct
+FROM {GOLD}.customer_segmentation
+GROUP BY customer_segment_value
+ORDER BY lifetime_revenue DESC;"""))
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC -- Pareto check: what % of revenue comes from the top 20% of customers?
-# MAGIC WITH ranked AS (
-# MAGIC   SELECT customer_key,
-# MAGIC          lifetime_revenue,
-# MAGIC          ROW_NUMBER() OVER (ORDER BY lifetime_revenue DESC) AS rn,
-# MAGIC          COUNT(*) OVER () AS n_customers
-# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.customer_segmentation
-# MAGIC )
-# MAGIC SELECT ROUND(SUM(lifetime_revenue) * 100.0 /
-# MAGIC               (SELECT SUM(lifetime_revenue) FROM SalesRevenueCustomerAnalytics.gold.customer_segmentation), 2) AS top20_revenue_share_pct
-# MAGIC FROM ranked
-# MAGIC WHERE rn <= n_customers * 0.2;
 
+display(spark.sql(f"""-- Pareto check: what % of revenue comes from the top 20% of customers?
+WITH ranked AS (
+  SELECT customer_key,
+         lifetime_revenue,
+         ROW_NUMBER() OVER (ORDER BY lifetime_revenue DESC) AS rn,
+         COUNT(*) OVER () AS n_customers
+  FROM {GOLD}.customer_segmentation
+)
+SELECT ROUND(SUM(lifetime_revenue) * 100.0 /
+              (SELECT SUM(lifetime_revenue) FROM {GOLD}.customer_segmentation), 2) AS top20_revenue_share_pct
+FROM ranked
+WHERE rn <= n_customers * 0.2;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -153,20 +146,19 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC WITH last_purchase AS (
-# MAGIC   SELECT customer_key, MAX(d.calendar_date) AS last_order_date
-# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.fact_sales f
-# MAGIC   JOIN SalesRevenueCustomerAnalytics.gold.dim_date d ON f.date_key = d.date_key
-# MAGIC   GROUP BY customer_key
-# MAGIC )
-# MAGIC SELECT
-# MAGIC   COUNT(*) AS at_risk_customers,
-# MAGIC   ROUND(SUM(c.lifetime_revenue), 0) AS revenue_at_risk
-# MAGIC FROM last_purchase lp
-# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.customer_segmentation c USING (customer_key)
-# MAGIC WHERE lp.last_order_date <= date_add(CURRENT_DATE, -180);
 
+display(spark.sql(f"""WITH last_purchase AS (
+  SELECT customer_key, MAX(d.calendar_date) AS last_order_date
+  FROM {GOLD}.fact_sales f
+  JOIN {GOLD}.dim_date d ON f.date_key = d.date_key
+  GROUP BY customer_key
+)
+SELECT
+  COUNT(*) AS at_risk_customers,
+  ROUND(SUM(c.lifetime_revenue), 0) AS revenue_at_risk
+FROM last_purchase lp
+JOIN {GOLD}.customer_segmentation c USING (customer_key)
+WHERE lp.last_order_date <= date_add(CURRENT_DATE, -180);"""))
 # COMMAND ----------
 
 # MAGIC %md

@@ -248,9 +248,8 @@ for name, tbl in sorted(AUTO_LOADER.items(), key=lambda x: x[1]["table"]):
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC DESCRIBE HISTORY SalesRevenueCustomerAnalytics.bronze.sales_transaction;
 
+display(spark.sql(f"""DESCRIBE HISTORY {BRONZE}.sales_transaction;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -259,18 +258,17 @@ for name, tbl in sorted(AUTO_LOADER.items(), key=lambda x: x[1]["table"]):
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC   COUNT(*)                                                    AS total_rows,
-# MAGIC   COUNT(DISTINCT transaction_id)                              AS distinct_txns,
-# MAGIC   COUNT(*) - COUNT(DISTINCT transaction_id)                   AS duplicate_txns,
-# MAGIC   SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END)        AS null_customer,
-# MAGIC   SUM(CASE WHEN quantity < 0 THEN 1 ELSE 0 END)               AS negative_qty,
-# MAGIC   SUM(CASE WHEN transaction_date > CURRENT_DATE THEN 1 ELSE 0 END) AS future_dates,
-# MAGIC   SUM(CASE WHEN currency = 'XYZ' THEN 1 ELSE 0 END)           AS invalid_currency,
-# MAGIC   SUM(CASE WHEN transaction_status = 'Shipped' THEN 1 ELSE 0 END) AS invalid_status
-# MAGIC FROM SalesRevenueCustomerAnalytics.bronze.sales_transaction;
 
+display(spark.sql(f"""SELECT
+  COUNT(*)                                                    AS total_rows,
+  COUNT(DISTINCT transaction_id)                              AS distinct_txns,
+  COUNT(*) - COUNT(DISTINCT transaction_id)                   AS duplicate_txns,
+  SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END)        AS null_customer,
+  SUM(CASE WHEN quantity < 0 THEN 1 ELSE 0 END)               AS negative_qty,
+  SUM(CASE WHEN transaction_date > CURRENT_DATE THEN 1 ELSE 0 END) AS future_dates,
+  SUM(CASE WHEN currency = 'XYZ' THEN 1 ELSE 0 END)           AS invalid_currency,
+  SUM(CASE WHEN transaction_status = 'Shipped' THEN 1 ELSE 0 END) AS invalid_status
+FROM {BRONZE}.sales_transaction;"""))
 # COMMAND ----------
 
 # MAGIC %md

@@ -253,23 +253,21 @@ scd2_upsert(
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC   COUNT(*)                              AS total_versions,
-# MAGIC   SUM(CASE WHEN is_current THEN 1 ELSE 0 END) AS current_rows,
-# MAGIC   COUNT(DISTINCT customer_id)           AS distinct_customers,
-# MAGIC   ROUND(SUM(CASE WHEN is_current THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 4) AS avg_versions_per_customer
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.dim_customer;
 
+display(spark.sql(f"""SELECT
+  COUNT(*)                              AS total_versions,
+  SUM(CASE WHEN is_current THEN 1 ELSE 0 END) AS current_rows,
+  COUNT(DISTINCT customer_id)           AS distinct_customers,
+  ROUND(SUM(CASE WHEN is_current THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 4) AS avg_versions_per_customer
+FROM {GOLD}.dim_customer;"""))
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT customer_key, customer_id, customer_name, country, state, region,
-# MAGIC        customer_status, effective_start_date, effective_end_date, is_current
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.dim_customer
-# MAGIC ORDER BY customer_id, effective_start_date
-# MAGIC LIMIT 15;
 
+display(spark.sql(f"""SELECT customer_key, customer_id, customer_name, country, state, region,
+       customer_status, effective_start_date, effective_end_date, is_current
+FROM {GOLD}.dim_customer
+ORDER BY customer_id, effective_start_date
+LIMIT 15;"""))
 # COMMAND ----------
 
 # MAGIC %md

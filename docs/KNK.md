@@ -380,3 +380,19 @@ Connection: the 15 local pytest tests exercise these pure functions (`pyproject.
 4. **Verification of the regenerated data** (same audit tooling as section 30): every CSV now passes header/column-role alignment; DQ markers tally **exactly** with the injected counts (1,543 malformed dates, 515 orphans, 515 bad products, 1,030 bad status, 1,030 bad currency, 8 negatives, 6,443 messy status, 3,105 lowercase currencies, 2,577 duplicates, 4 future rows); referential integrity holds (0 orders missing, exactly 1 customer missing = the injected orphan C99999). The 3 days that existed in the old snapshot (`2024-09-01..03` = 255/338/499 rows) match the new files **exactly** — final proof the old snapshot was this same generator's output, merely column-scrambled and partially copied.
 
 **Notes / caveats:** byte-parity between this port and a Databricks run is expected but not guaranteed across Python runtime versions (both use the same seeded algorithm); today's (2026-08-11) orders carry `total_amount = 0.0` by design (in-progress day, excluded from the totals fill); the port is a reference/regeneration artifact — the Databricks volume remains the authoritative landing zone. All 15 tests still pass.
+
+---
+
+## 32. Single-source configuration — %run kept for Jobs + all SQL centralized
+
+**User:** [two-part question] (1) running notebooks via Databricks Jobs & Pipelines — is `%run ./00_Setup_Workspace` still needed in 01 and 02? (2) check the idea of declaring catalog/volume names once and reusing them everywhere so one change propagates.
+
+**Assistant:**
+
+1. **`%run` stays — even with Jobs.** Job tasks are fully isolated executions: `depends_on` only guarantees notebook 00 *runs first*; it does **not** share Python variables with downstream tasks. `%run ./00_Setup_Workspace` is the only mechanism that brings `CATALOG`, `BRONZE/SILVER/GOLD`, `VOLUME_RAW`, `RAW_*`, `CHECKPOINT_BASE` and the `TABLES` map into every notebook's session. It is idempotent, so it is safe (and standard) inside every task. Caveat: if "Pipelines" meant Delta Live Tables, that would be different — DLT notebooks cannot use `%run` — but the current setup is a classic Jobs DAG (workflow YAML), where `%run` is correct.
+
+2. **The centralization idea is already how the repo works — with one gap.** Verified by audit: every executable Python reference (table reads/writes, volume paths) uses the variables from `00_Setup_Workspace.py` via `%run`, and `src/sales_platform/config.py` mirrors the same constants for the local test suite. The single gap was the **`%sql` cells**: ~32 cells across 10 notebooks hardcoded `SalesRevenueCustomerAnalytics.…` because Python variables cannot reach `%sql` cells. A catalog rename meant editing every SQL statement manually.
+
+3. **Gap closed — all `%sql` cells converted to `spark.sql(f"...")`.** The user chose full centralization. A converter script rewrote every notebook: `SalesRevenueCustomerAnalytics.bronze/silver/gold` became `{BRONZE}/{SILVER}/{GOLD}` (and bare catalog references `{CATALOG}`) inside `spark.sql(f"""...""")` calls, with `display(...)` wrapping SELECT statements so the rendered table output is unchanged. Explicit language switches mid-cell (Python code followed by `%sql` in one cell, e.g. notebook 06) were also handled. All notebooks verified: 0 leftover `%sql` markers, cell separators intact, AST-parse valid, 15/15 tests pass. Notebooks 01 and 07 needed no changes. The notebooks must be re-imported into Databricks from this source to take effect; the workflow YAML needs no changes.
+
+**Net effect:** the catalog name, volume path, schema names, table names and business constants now live in exactly one place — `00_Setup_Workspace.py` (with the test mirror in `config.py`) — and changing any of them propagates through the entire pipeline.

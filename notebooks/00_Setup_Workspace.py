@@ -93,16 +93,14 @@ print(f"  Checkpoint base      -> {CHECKPOINT_BASE}")
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC CREATE DATABASE IF NOT EXISTS SalesRevenueCustomerAnalytics.bronze COMMENT 'Raw, near-source data as received from ERP/transaction systems';
-# MAGIC CREATE DATABASE IF NOT EXISTS SalesRevenueCustomerAnalytics.silver COMMENT 'Cleansed, standardized, conformed data';
-# MAGIC CREATE DATABASE IF NOT EXISTS SalesRevenueCustomerAnalytics.gold   COMMENT 'Business-ready dimensional model for dashboards';
 
+spark.sql(f"""CREATE DATABASE IF NOT EXISTS {BRONZE} COMMENT 'Raw, near-source data as received from ERP/transaction systems';""")
+spark.sql(f"""CREATE DATABASE IF NOT EXISTS {SILVER} COMMENT 'Cleansed, standardized, conformed data';""")
+spark.sql(f"""CREATE DATABASE IF NOT EXISTS {GOLD}   COMMENT 'Business-ready dimensional model for dashboards';""")
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SHOW DATABASES;
 
+display(spark.sql(f"""SHOW DATABASES;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -124,10 +122,9 @@ print(f"  Checkpoint base      -> {CHECKPOINT_BASE}")
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC CREATE SCHEMA IF NOT EXISTS SalesRevenueCustomerAnalytics.sales_data COMMENT 'Raw-data landing zone for the sales platform';
-# MAGIC CREATE VOLUME IF NOT EXISTS SalesRevenueCustomerAnalytics.sales_data.raw_data COMMENT 'ERP export files (serverless-compatible replacement for DBFS /FileStore)';
 
+spark.sql(f"""CREATE SCHEMA IF NOT EXISTS {CATALOG}.sales_data COMMENT 'Raw-data landing zone for the sales platform';""")
+spark.sql(f"""CREATE VOLUME IF NOT EXISTS {CATALOG}.sales_data.raw_data COMMENT 'ERP export files (serverless-compatible replacement for DBFS /FileStore)';""")
 # COMMAND ----------
 
 RESET_LANDING_ZONE = False

@@ -30,26 +30,25 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC CREATE TABLE IF NOT EXISTS SalesRevenueCustomerAnalytics.gold.data_quality_audit (
-# MAGIC   run_id             STRING,
-# MAGIC   pipeline_name      STRING,
-# MAGIC   run_date           DATE,
-# MAGIC   start_time         TIMESTAMP,
-# MAGIC   end_time           TIMESTAMP,
-# MAGIC   status             STRING,
-# MAGIC   records_received   BIGINT,
-# MAGIC   records_processed  BIGINT,
-# MAGIC   records_rejected   BIGINT,
-# MAGIC   duplicate_records  BIGINT,
-# MAGIC   null_records       BIGINT,
-# MAGIC   invalid_records    BIGINT,
-# MAGIC   processing_time_sec DOUBLE,
-# MAGIC   message            STRING
-# MAGIC )
-# MAGIC USING DELTA
-# MAGIC COMMENT 'Data quality metrics per pipeline execution (doc §24)';
 
+spark.sql(f"""CREATE TABLE IF NOT EXISTS {GOLD}.data_quality_audit (
+  run_id             STRING,
+  pipeline_name      STRING,
+  run_date           DATE,
+  start_time         TIMESTAMP,
+  end_time           TIMESTAMP,
+  status             STRING,
+  records_received   BIGINT,
+  records_processed  BIGINT,
+  records_rejected   BIGINT,
+  duplicate_records  BIGINT,
+  null_records       BIGINT,
+  invalid_records    BIGINT,
+  processing_time_sec DOUBLE,
+  message            STRING
+)
+USING DELTA
+COMMENT 'Data quality metrics per pipeline execution (doc §24)';""")
 # COMMAND ----------
 
 # MAGIC %md
@@ -119,9 +118,7 @@ audit_df = spark.createDataFrame([metrics])
 audit_df.write.mode("append").saveAsTable(TABLES["gold_dq_audit"])
 print("Audit record written")
 
-# MAGIC %sql
-# MAGIC SELECT * FROM SalesRevenueCustomerAnalytics.gold.data_quality_audit ORDER BY run_date DESC;
-
+display(spark.sql(f"""SELECT * FROM {GOLD}.data_quality_audit ORDER BY run_date DESC;"""))
 # COMMAND ----------
 
 # MAGIC %md

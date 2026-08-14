@@ -212,12 +212,11 @@ print(f"Invalid rows  : {invalid.count():,}  -> quarantined (as-received payload
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT error_reason, COUNT(*) AS n
-# MAGIC FROM SalesRevenueCustomerAnalytics.silver.sales_quarantine
-# MAGIC GROUP BY error_reason
-# MAGIC ORDER BY n DESC;
 
+display(spark.sql(f"""SELECT error_reason, COUNT(*) AS n
+FROM {SILVER}.sales_quarantine
+GROUP BY error_reason
+ORDER BY n DESC;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -339,16 +338,15 @@ print(f"SalesRevenueCustomerAnalytics.silver.sales_order upserted — total rows
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC   COUNT(*)                                                AS rows,
-# MAGIC   COUNT(DISTINCT transaction_id)                          AS distinct_txns,
-# MAGIC   SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END)    AS null_customer,
-# MAGIC   SUM(CASE WHEN net_sales_usd IS NULL THEN 1 ELSE 0 END)  AS null_net_sales,
-# MAGIC   SUM(CASE WHEN quantity < 0 THEN 1 ELSE 0 END)           AS negative_qty,
-# MAGIC   ROUND(SUM(net_sales_usd), 2)                           AS net_sales_usd
-# MAGIC FROM SalesRevenueCustomerAnalytics.silver.sales_transaction;
 
+display(spark.sql(f"""SELECT
+  COUNT(*)                                                AS rows,
+  COUNT(DISTINCT transaction_id)                          AS distinct_txns,
+  SUM(CASE WHEN customer_id IS NULL THEN 1 ELSE 0 END)    AS null_customer,
+  SUM(CASE WHEN net_sales_usd IS NULL THEN 1 ELSE 0 END)  AS null_net_sales,
+  SUM(CASE WHEN quantity < 0 THEN 1 ELSE 0 END)           AS negative_qty,
+  ROUND(SUM(net_sales_usd), 2)                           AS net_sales_usd
+FROM {SILVER}.sales_transaction;"""))
 # COMMAND ----------
 
 # MAGIC %md

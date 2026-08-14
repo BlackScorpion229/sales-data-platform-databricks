@@ -260,15 +260,14 @@ for k in after:
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT customer_id, customer_name, region, state, customer_status,
-# MAGIC        effective_start_date, effective_end_date, is_current
-# MAGIC FROM SalesRevenueCustomerAnalytics.gold.dim_customer
-# MAGIC WHERE customer_id IN (
-# MAGIC   SELECT customer_id FROM SalesRevenueCustomerAnalytics.gold.dim_customer GROUP BY customer_id HAVING COUNT(*) > 1
-# MAGIC )
-# MAGIC ORDER BY customer_id, effective_start_date;
 
+display(spark.sql(f"""SELECT customer_id, customer_name, region, state, customer_status,
+       effective_start_date, effective_end_date, is_current
+FROM {GOLD}.dim_customer
+WHERE customer_id IN (
+  SELECT customer_id FROM {GOLD}.dim_customer GROUP BY customer_id HAVING COUNT(*) > 1
+)
+ORDER BY customer_id, effective_start_date;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -278,30 +277,29 @@ for k in after:
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC WITH moved AS (
-# MAGIC   SELECT customer_id, region AS new_region, effective_start_date AS moved_on
-# MAGIC   FROM SalesRevenueCustomerAnalytics.gold.dim_customer
-# MAGIC   WHERE is_current = true AND effective_start_date > '2026-06-01'
-# MAGIC     AND customer_id IN (SELECT customer_id FROM SalesRevenueCustomerAnalytics.gold.dim_customer GROUP BY customer_id HAVING COUNT(*) > 1)
-# MAGIC   LIMIT 1
-# MAGIC )
-# MAGIC SELECT
-# MAGIC   m.customer_id,
-# MAGIC   c.customer_name,
-# MAGIC   d.year_month,
-# MAGIC   r.region_name,
-# MAGIC   CASE WHEN d.calendar_date < m.moved_on THEN 'BEFORE move' ELSE 'AFTER move' END AS period,
-# MAGIC   ROUND(SUM(f.net_sales), 2) AS revenue
-# MAGIC FROM moved m
-# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.fact_sales f ON f.customer_key IN (
-# MAGIC   SELECT customer_key FROM SalesRevenueCustomerAnalytics.gold.dim_customer WHERE customer_id = m.customer_id)
-# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_customer c ON c.customer_key = f.customer_key
-# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_date d ON f.date_key = d.date_key
-# MAGIC JOIN SalesRevenueCustomerAnalytics.gold.dim_region r ON f.region_key = r.region_key
-# MAGIC GROUP BY m.customer_id, c.customer_name, d.year_month, r.region_name, m.moved_on, d.calendar_date
-# MAGIC ORDER BY d.calendar_date;
 
+display(spark.sql(f"""WITH moved AS (
+  SELECT customer_id, region AS new_region, effective_start_date AS moved_on
+  FROM {GOLD}.dim_customer
+  WHERE is_current = true AND effective_start_date > '2026-06-01'
+    AND customer_id IN (SELECT customer_id FROM {GOLD}.dim_customer GROUP BY customer_id HAVING COUNT(*) > 1)
+  LIMIT 1
+)
+SELECT
+  m.customer_id,
+  c.customer_name,
+  d.year_month,
+  r.region_name,
+  CASE WHEN d.calendar_date < m.moved_on THEN 'BEFORE move' ELSE 'AFTER move' END AS period,
+  ROUND(SUM(f.net_sales), 2) AS revenue
+FROM moved m
+JOIN {GOLD}.fact_sales f ON f.customer_key IN (
+  SELECT customer_key FROM {GOLD}.dim_customer WHERE customer_id = m.customer_id)
+JOIN {GOLD}.dim_customer c ON c.customer_key = f.customer_key
+JOIN {GOLD}.dim_date d ON f.date_key = d.date_key
+JOIN {GOLD}.dim_region r ON f.region_key = r.region_key
+GROUP BY m.customer_id, c.customer_name, d.year_month, r.region_name, m.moved_on, d.calendar_date
+ORDER BY d.calendar_date;"""))
 # COMMAND ----------
 
 # MAGIC %md
@@ -321,9 +319,7 @@ silver_after = table_count(TABLES["silver_transaction"])
 print(f"SalesRevenueCustomerAnalytics.silver.sales_transaction: {silver_before:,} -> {silver_after:,}"
       + ("  ✓ IDEMPOTENT (no duplicates)" if silver_before == silver_after else "  ✗ CHANGED!"))
 
-# MAGIC %sql
-# MAGIC SELECT * FROM SalesRevenueCustomerAnalytics.gold.data_quality_audit ORDER BY run_date DESC, end_time DESC LIMIT 5;
-
+display(spark.sql(f"""SELECT * FROM {GOLD}.data_quality_audit ORDER BY run_date DESC, end_time DESC LIMIT 5;"""))
 # COMMAND ----------
 
 # MAGIC %md
