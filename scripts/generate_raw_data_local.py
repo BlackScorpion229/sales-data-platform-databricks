@@ -1,82 +1,55 @@
-# Databricks notebook source
-# MAGIC %md
-# MAGIC # 01 — Generate Synthetic ERP Data
-# MAGIC
-# MAGIC **Purpose:** Simulates the source systems (ERP + transactions) by writing
-# MAGIC realistic exports to the raw-data landing zone in a **Unity Catalog
-# MAGIC volume** — CSV for most files, JSON for `erp/region` (multi-format
-# MAGIC ingestion demo). Serverless-compatible: the public DBFS root is disabled,
-# MAGIC so `/Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data` replaces `/FileStore`.
-# MAGIC Includes **deliberate data-quality issues** so the Bronze → Silver
-# MAGIC pipeline has real work to do.
-# MAGIC
-# MAGIC **Generated datasets (files in the raw volume):**
-# MAGIC | File | Format | Rows | Purpose |
-# MAGIC |------|--------|------|---------|
-# MAGIC | `erp/region/` | JSON | 12 | Sales regions (dimension source) |
-# MAGIC | `erp/sales_rep/` | CSV | ~60 | Sales representatives (dimension source) |
-# MAGIC | `erp/currency/` | CSV | ~6 | FX rates for currency standardization |
-# MAGIC | `erp/customer/` | CSV | ~1,515 | Customer master (incl. ~15 duplicates) |
-# MAGIC | `erp/customer_updates/` | CSV | ~40 | Changed + new customer records (SCD2 demo) |
-# MAGIC | `erp/product/` | CSV | ~363 | Product master (incl. ~3 duplicates) |
-# MAGIC | `transactions/dt=YYYY-MM-DD/` | CSV | ~270K lines | Daily order line items, 24 months |
-# MAGIC | `orders/` | CSV | ~78K | Order headers (join to lines — ~710 days × 90–160 weekday / 55–95 weekend orders) |
-# MAGIC
-# MAGIC **Deliberate DQ issues injected** (deterministic — seeded RNG) — the raw
-# MAGIC data is **deliberately NOT clean**; cleaning happens in Silver:
-# MAGIC
-# MAGIC *Transactions (line items)* — ~3% of rows are affected in total:
-# MAGIC - ~1.0% exact duplicate rows (source bug) → dedup in Silver
-# MAGIC - ~0.5% `customer_id` missing (NULL) → completeness + RI violation
-# MAGIC - ~0.2% orphan `customer_id` (`C99999` — no master record) → RI violation
-# MAGIC - ~0.2% deleted/unknown `product_id` (`P9999`) → RI violation
-# MAGIC - ~0.4% truly invalid status (`On Hold`, blank) → quarantined
-# MAGIC - ~0.6% malformed date (`2024-09-01 08:15:00`) → quarantined
-# MAGIC - ~0.4% invalid currency (`XYZ`) → quarantined
-# MAGIC - ~3.5% messy-but-recoverable values → **normalized in Silver**, not rejected:
-# MAGIC   lowercase / extra-space statuses (`shipped`, `completed `, `COMPLETED`),
-# MAGIC   lowercase currencies (`usd`, `gbp`)
-# MAGIC - a handful of negative-quantity rows and future-dated rows (validity failures)
-# MAGIC
-# MAGIC *Master data* — also dirty:
-# MAGIC - ~15 duplicate customer records, ~3 duplicate product records (master dedup)
-# MAGIC - case/whitespace variants in `customer_status` and `product_status`
-# MAGIC - ~2 products with `unit_price = NULL`; ~10 customers with `city = NULL`
-# MAGIC - ~30 customers change region/status in the update file → SCD2 demo
-# MAGIC
-# MAGIC > **Design note:** "recoverable" dirt (case, whitespace, synonyms) must be
-# MAGIC > **standardized** in Silver; "unrecoverable" dirt (missing keys, unknown
-# MAGIC > values, impossible dates) must be **quarantined**. The pipeline treats the
-# MAGIC > two classes differently — that is exactly what production DQ does.
+#!/usr/bin/env python3
+"""Generate the FULL synthetic ERP dataset locally as a mirror of notebook 01.
 
-# COMMAND ----------
+Faithful local port of `notebooks/01_Generate_Synthetic_ERP_Data.py`: the same
+seed (42), the same fixed "today" (2026-08-11) and the same RNG call sequence
+produce the same numbers as the Databricks run. Only the write layer differs:
+plain CSV/JSONL files instead of Spark output (no Spark required locally).
 
-# MAGIC %run ./00_Setup_Workspace
+It replaces the entire `data/sales_data/raw_data` tree with a COMPLETE, aligned
+snapshot:
+  - erp/{customer,product,customer_updates,sales_rep,currency}/part-00000.csv
+  - erp/region/part-00000.json          (JSONL, Spark-style compact output)
+  - orders/part-00000.csv
+  - transactions/dt=YYYY-MM-DD/part-00000.csv   (one file per day, ~710 days)
+  - an empty `_SUCCESS` marker in every folder (Spark write convention)
 
-# COMMAND ----------
+The previous snapshot in that folder (partial + column-scrambled) is deleted
+first. The Databricks volume remains the authoritative landing zone; this local
+copy is a reference/regeneration artifact only (git-ignored via `data/`).
 
+Run:  python scripts/generate_raw_data_local.py
+"""
+
+import csv
+import json
+import os
 import random
-from datetime import date, datetime, timedelta
+import shutil
+from datetime import date, timedelta
+
+OUT_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "data", "sales_data", "raw_data")
 
 rng = random.Random(42)  # deterministic: every run produces identical data
-
 today = date(2026, 8, 11)
 
-# ---------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------
+
 def rdate(start, end):
     days = (end - start).days
     return start + timedelta(days=rng.randint(0, days))
 
+
 def choice_weighted(items):
     return rng.choices(list(items.keys()), weights=list(items.values()))[0]
+
 
 def rround(x, n=2):
     return round(x, n)
 
+
 # ---------------------------------------------------------------
-# Static reference data
+# Static reference data (verbatim from notebook 01)
 # ---------------------------------------------------------------
 REGIONS = [
     {"region_id": "R01", "region_name": "North East",  "country": "United States", "state": "NY", "territory": "Domestic"},
@@ -93,7 +66,7 @@ REGIONS = [
     {"region_id": "R12", "region_name": "LATAM",       "country": "Mexico",        "state": "DF", "territory": "International"},
 ]
 
-REGION_BY_STATE = {  # US state -> region mapping (used to derive region from customer)
+REGION_BY_STATE = {
     "NY": "R01", "MA": "R01", "NJ": "R01", "PA": "R01", "CT": "R01",
     "FL": "R02", "GA": "R02", "NC": "R02", "VA": "R02", "SC": "R02",
     "IL": "R03", "OH": "R03", "MI": "R03", "MN": "R03", "WI": "R03",
@@ -146,15 +119,6 @@ STATUS_W = {"Active": 87, "Inactive": 13}
 TAX_RATE = {"United States": 0.07, "Canada": 0.11, "United Kingdom": 0.2, "Germany": 0.19,
             "France": 0.2, "India": 0.18, "Australia": 0.1, "Mexico": 0.16}
 
-print("Reference data + helpers ready")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 1. Reference dimensions (region / sales rep / currency)
-
-# COMMAND ----------
-
 rep_first = ["Alice", "Bob", "Carla", "David", "Emma", "Frank", "Grace", "Hassan",
              "Irene", "Jorge", "Kiran", "Lena", "Marco", "Nina", "Oscar", "Priya",
              "Quinn", "Ravi", "Sofia", "Tom", "Uma", "Victor", "Wendy", "Xavier",
@@ -164,6 +128,9 @@ rep_last = ["Anderson", "Baker", "Chen", "Diaz", "Evans", "Foster", "Garcia",
             "O'Brien", "Patel", "Reyes", "Silva", "Turner", "Ueda", "Voss",
             "Walker", "Xu", "Young", "Zhang"]
 
+# ---------------------------------------------------------------
+# 1. Sales reps
+# ---------------------------------------------------------------
 sales_reps = []
 rep_ids = []
 for i in range(60):
@@ -180,17 +147,9 @@ for i in range(60):
 for rep in sales_reps:
     rep["sales_rep_email"] = rep["sales_rep_name"].lower().replace(" ", ".") + "@salesco.com"
 
-print(f"Generated {len(sales_reps)} sales reps, {len(REGIONS)} regions, {len(CURRENCIES)} currencies")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 2. Customer master
-# MAGIC Pareto-weighted (top ~10% of customers will drive ~50% of revenue — this makes
-# MAGIC the "Top Customers / revenue contribution" analytics meaningful).
-
-# COMMAND ----------
-
+# ---------------------------------------------------------------
+# 2. Customer master (1,500 + dirt)
+# ---------------------------------------------------------------
 customers = []
 for i in range(1500):
     cid = f"C{10001 + i}"
@@ -223,30 +182,21 @@ for i in range(1500):
     }
     customers.append(customer)
 
-# -------- master-data dirt: NULLs, case/whitespace variants, duplicates --------
-for idx in rng.sample(range(len(customers)), 10):   # NULL city (incomplete address)
+for idx in rng.sample(range(len(customers)), 10):   # NULL city
     customers[idx]["city"] = None
-for idx in rng.sample(range(len(customers)), 15):   # messy status values (normalized in Silver)
+for idx in rng.sample(range(len(customers)), 15):   # messy status values
     customers[idx]["customer_status"] = rng.choice(["active", "Active ", "INACTIVE", "ACTIVE "])
 for idx in rng.sample(range(len(customers)), 5):    # trailing whitespace in names
     customers[idx]["customer_name"] += " "
-for dup in rng.sample(range(len(customers)), 15):   # exact duplicate master records
+for dup in rng.sample(range(len(customers)), 15):   # exact duplicate records
     customers.append(dict(customers[dup]))
 for idx in rng.sample(range(len(customers)), 8):    # case variants in type/segment
     customers[idx]["customer_type"] = rng.choice(["enterprise", "mid-market", "DISTRIBUTOR"])
     customers[idx]["customer_segment"] = rng.choice(["corporate", "small business"])
 
-print(f"Generated {len(customers)} customers (incl. master-data dirt)")
-customers[:2]
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 3. Product master
-# MAGIC ~360 products across 6 categories with realistic price/cost bands.
-
-# COMMAND ----------
-
+# ---------------------------------------------------------------
+# 3. Product master (360 + dirt)
+# ---------------------------------------------------------------
 products = []
 prices = {}
 for i in range(360):
@@ -274,31 +224,19 @@ for i in range(360):
     })
     prices[pid] = price
 
-# -------- master-data dirt: NULLs, variants, duplicates --------
-for idx in rng.sample(range(len(products)), 2):     # unit_price NULL (pricing missing)
+for idx in rng.sample(range(len(products)), 2):     # unit_price NULL
     products[idx]["unit_price"] = None
-for idx in rng.sample(range(len(products)), 10):    # messy status values (normalized in Silver)
+for idx in rng.sample(range(len(products)), 10):    # messy status values
     products[idx]["product_status"] = rng.choice(["inactive", "Active ", "active"])
 for idx in rng.sample(range(len(products)), 5):     # trailing whitespace in names
     products[idx]["product_name"] += " "
-for dup in rng.sample(range(len(products)), 3):     # exact duplicate master records
+for dup in rng.sample(range(len(products)), 3):     # exact duplicate records
     products.append(dict(products[dup]))
 
-print(f"Generated {len(products)} products (incl. master-data dirt)")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 4. Orders + transactions (24 months, daily batch files)
-# MAGIC
-# MAGIC - Order headers written to `orders/` (completed / cancelled / returned)
-# MAGIC - Line items written to `transactions/dt=YYYY-MM-DD/` (only completed + returned)
-# MAGIC - One file per day — exactly what Auto Loader ingests in **incremental** mode
-
-# COMMAND ----------
-
+# ---------------------------------------------------------------
+# 4. Orders + transactions (24 months)
+# ---------------------------------------------------------------
 def customer_weight(c):
-    """Customers follow a Pareto-ish revenue distribution."""
     return rng.expovariate(1 / (1 + (10001 + int(c["customer_id"][1:])) % 100 * 0.6))
 
 start = date(2024, 9, 1)
@@ -366,12 +304,10 @@ for day in range((today - start).days + 1):
         orders.append(order)
 
 # -------- inject deliberate DQ issues (deterministic, disjoint slices) --------
-# Every issue class gets its own disjoint slice of row indices — counts are
-# exact and reproducible. "Recoverable" dirt is normalized in Silver;
-# "unrecoverable" dirt is quarantined.
 n = len(txns)
 idx = list(range(n))
 rng.shuffle(idx)
+
 offset = 0
 
 def take(k):
@@ -411,19 +347,15 @@ for i in neg_qty:
     txns[i]["quantity"] = -abs(txns[i]["quantity"])
     txns[i]["net_amount"] = rround(-abs(txns[i]["net_amount"]), 2)
 
-# duplicate rows (copies made AFTER mutations, like a real export bug)
 for dup in dupe_idx:
     txns.append(dict(txns[dup]))
 
-# future-dated rows
 for d in future_dates:
     txns.append(dict(txns[0]) | {"transaction_id": f"T-FUT-{d}", "transaction_date": d.isoformat()})
 
-# order headers get the same messy-status treatment
 for o in rng.sample(orders, len(orders) // 50):
     o["order_status"] = rng.choice(["completed", "COMPLETED ", "cancelled", "returned"])
 
-# fill order totals from their lines
 line_totals = {}
 for t in txns:
     if t["transaction_date"] == today.isoformat() or "FUT" in t["transaction_id"]:
@@ -432,33 +364,9 @@ for t in txns:
 for o in orders:
     o["total_amount"] = rround(line_totals.get(o["order_id"], 0.0), 2)
 
-print(f"Orders      : {len(orders)}")
-print(f"Txns lines  : {len(txns)}  ({n} base + {len(dupe_idx)} duplicates + {len(future_dates)} future-dated)")
-print()
-print("Injected DQ issues (transaction rows):")
-print(f"  unrecoverable (-> quarantine):")
-print(f"    null customer_id     : {len(null_cust):>7,}  ({null_cust and len(null_cust)/n*100:.2f}%)")
-print(f"    orphan customer_id   : {len(orph_cust):>7,}  ({len(orph_cust)/n*100:.2f}%)")
-print(f"    unknown product_id   : {len(bad_prod):>7,}  ({len(bad_prod)/n*100:.2f}%)")
-print(f"    invalid status       : {len(bad_status):>7,}  ({len(bad_status)/n*100:.2f}%)")
-print(f"    malformed date       : {len(bad_date):>7,}  ({len(bad_date)/n*100:.2f}%)")
-print(f"    invalid currency     : {len(bad_cur):>7,}  ({len(bad_cur)/n*100:.2f}%)")
-print(f"    negative quantity    : {len(neg_qty):>7,}")
-print(f"  recoverable (-> normalized in Silver):")
-print(f"    messy status variants: {len(messy_stat):>7,}  ({len(messy_stat)/n*100:.2f}%)")
-print(f"    lowercase currencies : {len(messy_cur):>7,}  ({len(messy_cur)/n*100:.2f}%)")
-print(f"  duplicates             : {len(dupe_idx):>7,}  ({len(dupe_idx)/n*100:.2f}%)")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 5. Customer update file (SCD2 + incremental demo)
-# MAGIC ~30 customers change region/state/status; ~10 are brand-new. This file is
-# MAGIC written to `erp/customer_updates/` and ingested by notebook 10 to
-# MAGIC demonstrate SCD Type 2 + incremental MERGE.
-
-# COMMAND ----------
-
+# ---------------------------------------------------------------
+# 5. Customer update file (30 changed + 10 new)
+# ---------------------------------------------------------------
 import copy
 
 changed = rng.sample(customers, 30)
@@ -477,7 +385,7 @@ for i, c in enumerate(changed):
     upd["updated_date"] = rdate(date(2026, 6, 1), date(2026, 8, 10)).isoformat()
     customer_updates.append(upd)
 
-for i in range(10):  # brand-new customers
+for i in range(10):
     new_id = f"C{10001 + len(customers) + i}"
     country, state, city = rng.choice(INTL)
     newc = {
@@ -497,80 +405,9 @@ for i in range(10):  # brand-new customers
     }
     customer_updates.append(newc)
 
-print(f"Customer updates: {len(customer_updates)} ({len(changed)} changed, 10 new)")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 6. Write everything to the raw volume — CSV ERP exports + one JSON folder
-# MAGIC Most exports are CSV (realistic for ERP), but `erp/region` is written as
-# MAGIC JSON to demonstrate multi-format ingestion in the Bronze layer. All paths
-# MAGIC live under `/Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data` (UC volume — the
-# MAGIC serverless replacement for DBFS `/FileStore`).
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### 6a. Checkpoint — landing zone BEFORE generation
-# MAGIC Fail-fast sanity check: on a fresh run every folder must be empty or not
-# MAGIC yet created (00 only creates the base folders). Re-runs show the previous
-# MAGIC exports that `mode("overwrite")` replaces.
-
-# COMMAND ----------
-
-LANDING_PATHS = [
-    RAW_CUSTOMER,
-    RAW_PRODUCT,
-    f"{RAW_BASE}/erp/customer_updates",
-    f"{RAW_BASE}/erp/region",
-    f"{RAW_BASE}/erp/sales_rep",
-    f"{RAW_BASE}/erp/currency",
-    f"{RAW_BASE}/orders",
-    RAW_TRANSACT,
-]
-
-def ls_r(path, max_depth=2, _depth=0):
-    """Recursively list files under a volume path (tolerant of missing paths).
-
-    Uses Hadoop FileSystem directly: one driver-side `listFiles(recursive=True)`
-    call walks the whole tree. The old per-directory `dbutils.fs.ls` recursion
-    needed ~730 sequential calls for the transactions folder (~230 ms each) —
-    that was the multi-minute wait.
-    """
-    try:
-        jvm = spark._jvm
-        conf = spark.sparkContext._jsc.hadoopConfiguration()
-        fs = jvm.org.apache.hadoop.fs.FileSystem.get(conf)
-        it = fs.listFiles(jvm.org.apache.hadoop.fs.Path(path), True)
-        files = []
-        while it.hasNext():
-            files.append(it.next().getPath().toString())
-        return files
-    except Exception:
-        return []
-
-def inventory(label, paths):
-    """Print a per-folder file count — the landing-zone checkpoint."""
-    total = 0
-    print(f"== {label} ==")
-    for p in paths:
-        try:
-            dbutils.fs.ls(p)
-        except Exception:
-            print(f"  {p}  ->  NOT CREATED YET")
-            continue
-        files = ls_r(p)
-        total += len(files)
-        print(f"  {p}  ->  {len(files):>6,} file(s)" + ("  (EMPTY)" if not files else ""))
-    print(f"  TOTAL: {total:,} file(s) in landing zone")
-    print()
-
-inventory("Landing zone BEFORE generation", LANDING_PATHS)
-
-# COMMAND ----------
-
-from pyspark.sql import functions as F
-
+# ---------------------------------------------------------------
+# 6. Write everything — aligned columns enforced by explicit col lists
+# ---------------------------------------------------------------
 CUST_COLS = ["customer_id", "customer_name", "customer_type", "customer_segment", "country",
              "state", "city", "region", "industry", "sales_rep_id", "customer_status",
              "created_date", "updated_date"]
@@ -581,54 +418,74 @@ ORD_COLS  = ["order_id", "customer_id", "order_date", "order_status", "total_amo
 TXN_COLS  = ["transaction_id", "order_id", "transaction_date", "customer_id", "product_id",
              "quantity", "unit_price", "discount", "tax", "gross_amount", "net_amount",
              "currency", "region_id", "sales_rep_id", "transaction_status", "source_system"]
+REP_COLS  = ["sales_rep_id", "sales_rep_name", "region_id", "sales_rep_email", "hire_date", "status"]
+CUR_COLS  = ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date"]
 
-def write_csv(rows, cols, path):
-    df = spark.createDataFrame(rows, schema=cols)
-    df.coalesce(1).write.mode("overwrite").option("header", True).csv(path)
-    return df.count()
+if os.path.isdir(OUT_ROOT):
+    shutil.rmtree(OUT_ROOT)
+os.makedirs(OUT_ROOT)
 
-def write_json(rows, path):
-    df = spark.createDataFrame(rows)
-    df.coalesce(1).write.mode("overwrite").json(path)
-    return df.count()
 
-n_cust   = write_csv(customers,        CUST_COLS, RAW_CUSTOMER)
-n_prod   = write_csv(products,         PROD_COLS, RAW_PRODUCT)
-n_ord    = write_csv(orders,           ORD_COLS,  f"{RAW_BASE}/orders")
-n_upd    = write_csv(customer_updates, CUST_COLS, f"{RAW_BASE}/erp/customer_updates")
-n_reg    = write_json(REGIONS, f"{RAW_BASE}/erp/region")
-n_rep    = write_csv(sales_reps,       ["sales_rep_id", "sales_rep_name", "region_id", "sales_rep_email", "hire_date", "status"], f"{RAW_BASE}/erp/sales_rep")
-n_cur    = write_csv(CURRENCIES,       ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date"], f"{RAW_BASE}/erp/currency")
+def _fmt(v):
+    return "" if v is None else str(v)
 
-# transactions partitioned by day -> one file per day under transactions/dt=YYYY-MM-DD/
-# Fast path: build the DataFrame via pandas + Arrow. Spark's native dict->row
-# conversion of ~270K Python dicts was the real bottleneck (~6 min on the driver
-# regardless of repartition); Arrow serializes the same rows in ~1-2 seconds.
-# repartition("dt") keeps one file per day but writes all days in parallel.
-# NOTE: dt must be date-only ("yyyy-MM-dd"). Malformed rows contain a time
-# suffix ("2024-09-01 08:15:00"); using the full value would create
-# "dt=2024-09-01 08:15:00/" directories whose URL-encoded colons (%3A) break
-# Auto Loader's partition-column timestamp cast downstream.
-import pandas as pd
-txn_df = spark.createDataFrame(pd.DataFrame(txns), schema=TXN_COLS)
-txn_df.withColumn("dt", F.substring(F.col("transaction_date"), 1, 10)) \
-    .repartition("dt") \
-    .write.mode("overwrite").partitionBy("dt").option("header", True).csv(RAW_TRANSACT)
+
+def write_csv(directory, rows, cols):
+    os.makedirs(directory, exist_ok=True)
+    with open(os.path.join(directory, "part-00000.csv"), "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f, lineterminator="\n")
+        w.writerow(cols)
+        for r in rows:
+            w.writerow([_fmt(r[k]) for k in cols])
+    with open(os.path.join(directory, "_SUCCESS"), "w") as f:
+        f.write("")
+    return len(rows)
+
+
+def write_json(directory, rows):
+    os.makedirs(directory, exist_ok=True)
+    with open(os.path.join(directory, "part-00000.json"), "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, separators=(",", ":")) + "\n")
+    with open(os.path.join(directory, "_SUCCESS"), "w") as f:
+        f.write("")
+    return len(rows)
+
+
+n_cust = write_csv(os.path.join(OUT_ROOT, "erp", "customer"), customers, CUST_COLS)
+n_prod = write_csv(os.path.join(OUT_ROOT, "erp", "product"), products, PROD_COLS)
+n_ord  = write_csv(os.path.join(OUT_ROOT, "orders"), orders, ORD_COLS)
+n_upd  = write_csv(os.path.join(OUT_ROOT, "erp", "customer_updates"), customer_updates, CUST_COLS)
+n_rep  = write_csv(os.path.join(OUT_ROOT, "erp", "sales_rep"), sales_reps, REP_COLS)
+n_cur  = write_csv(os.path.join(OUT_ROOT, "erp", "currency"), CURRENCIES, CUR_COLS)
+n_reg  = write_json(os.path.join(OUT_ROOT, "erp", "region"), REGIONS)
+
+txn_days = {}
+for t in txns:
+    txn_days.setdefault(t["transaction_date"][:10], []).append(t)
+for d, rows in sorted(txn_days.items()):
+    write_csv(os.path.join(OUT_ROOT, "transactions", f"dt={d}"), rows, TXN_COLS)
 
 print(f"customers     : {n_cust:>7,}")
 print(f"customer_upd  : {n_upd:>7,}")
 print(f"products      : {n_prod:>7,}")
+print(f"sales_reps    : {n_rep:>7,}")
+print(f"currencies    : {n_cur:>7,}")
+print(f"regions       : {n_reg:>7,}")
 print(f"orders        : {n_ord:>7,}")
-print(f"transactions  : {len(txns):>7,} rows ->", len({t['transaction_date'] for t in txns}), "daily files")
-print(f"regions/reps/currencies written")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### 6b. Checkpoint — landing zone AFTER generation
-# MAGIC Proves every export landed in the volume: CSV everywhere, one JSON folder
-# MAGIC (region), and one CSV per transaction day (~730 daily files).
-
-# COMMAND ----------
-
-inventory("Landing zone AFTER generation", LANDING_PATHS)
+print(f"transactions  : {len(txns):>7,} rows -> {len(txn_days)} daily files")
+print()
+print("Injected DQ issues (transaction rows):")
+print(f"  null customer_id     : {len(null_cust):>7,}")
+print(f"  orphan customer_id   : {len(orph_cust):>7,}")
+print(f"  unknown product_id   : {len(bad_prod):>7,}")
+print(f"  invalid status       : {len(bad_status):>7,}")
+print(f"  malformed date       : {len(bad_date):>7,}")
+print(f"  invalid currency     : {len(bad_cur):>7,}")
+print(f"  negative quantity    : {len(neg_qty):>7,}")
+print(f"  messy status variants: {len(messy_stat):>7,}")
+print(f"  lowercase currencies : {len(messy_cur):>7,}")
+print(f"  duplicates           : {len(dupe_idx):>7,}")
+print(f"  future-dated rows    : {len(future_dates)}")
+print()
+print(f"Written to: {OUT_ROOT}")

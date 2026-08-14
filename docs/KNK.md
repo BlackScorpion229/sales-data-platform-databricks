@@ -250,3 +250,133 @@ Connection: the 15 local pytest tests exercise these pure functions (`pyproject.
 **User:** ok like previously - update all the conversation (without the code) in to the KNK.md file.
 
 **Assistant:** Appended sections 9–17 (project recap, git plan, CSV-only landing zone review, region-as-JSON change, file storage explanation, landing-zone checkpoints, Jobs/Asset Bundles walkthrough + hardening, commit messages, and the shared package explanation) to this document, following the established format.
+
+---
+
+## 19. Serverless migration — status recap
+
+**User:** What did we do so far?
+
+**Assistant:** Recapped the current phase: migrating the whole platform to **serverless Community Edition** (Spark Connect, Unity Catalog) — the catalog is `SalesRevenueCustomerAnalytics` with `bronze/silver/gold` schemas plus the `sales_data` volume, and every table/volume reference is now fully qualified. Done so far: notebook 00 rewritten around the new catalog and volume paths; notebook 01 rewritten to a pandas+Arrow write path with Hadoop-recursive listings; notebooks 02 and 10 adapted to serverless (schema evolution via the `mergeSchema` write option, `_metadata.file_path` instead of `input_file_name()`, `cloudFiles.validateOptions=false` for lowercased option keys, `awaitTermination` instead of `awaitAnyTermination`); the shared config package updated with the matching catalog and all 15 tests passing. In progress: the transaction stream failing with a `CAST_INVALID_INPUT` on a URL-encoded timestamp value. Next: fix that, then keep moving through notebooks 03–10.
+
+---
+
+## 20. Root cause found — malformed partition directories
+
+**User:** Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+
+**Assistant:** Continued with the local verifications and landed on the root cause of the `CAST_INVALID_INPUT`: notebook 01 derives the `dt` partition column directly from `transaction_date`, and the injected malformed dates carry a time suffix ("2024-09-01 08:15:00"). Those rows became partition folders literally named `dt=2024-09-01 08:15:00/`; on the volume path the colons are URL-encoded (`08%3A15%3A00`). Auto Loader treats any `key=value/` folder as a partition column and infers its type by casting the folder values — under ANSI mode the malformed value raises instead of degrading. Fixed the generator so `dt` is date-only (first 10 characters), keeping the dirty values inside the CSV data for Silver to quarantine; audited notebook 10's demo writer (safe — it only generates clean ISO dates); updated README and the KNK-style docs to reflect the serverless setup and the gotcha list; re-verified no doubled prefixes or old metastore references remain; all 15 tests still pass.
+
+---
+
+## 21. Same error on retry — stale state
+
+**User:** [re-pasted the identical `CAST_INVALID_INPUT` stream failure]
+
+**Assistant:** Cross-checked every writer of the transactions folder (only notebook 01 writes partition folders, and its fix was verified in the repo; notebook 10's demo writes clean dates) and concluded the failure was now purely state, not code: either the old `dt=2024-09-01 08%3A15%3A00/` folders still existed on the volume, or the checkpoint still listed the files under them — Auto Loader rebuilds its file index from the committed offsets, so the partition cast runs on every restart no matter what the code says. Instructed the user to purge the transactions folder and the transaction checkpoint, re-run the fixed notebook 01, verify the folder names with a regex check, and only then re-run 02.
+
+---
+
+## 22. Third identical failure — the checkpoint was never deleted
+
+**User:** [re-pasted the failure a third time]
+
+**Assistant:** Read the new dump carefully: same streaming query id, same sequence number, same backfill timestamp as all previous failures — proof the checkpoint had never actually been deleted, so every run resumed the old stream from the stale offsets. Provided a self-contained purge cell that prints the state, deletes the transactions folder and the transaction checkpoint, and verifies both are gone, followed by the exact run order: re-import the fixed notebook 01 into the workspace, run it, validate every partition folder name is a clean date, then run 02. Emphasized that a fresh stream over clean folders is the only way the partition cast avoids the malformed value.
+
+---
+
+## 23. The issue explained plainly
+
+**User:** what is the issue exactly ?
+
+**Assistant:** Explained the full causal chain in plain terms: (1) the generator injects ~0.6% malformed dates as "date + time" strings; (2) the partition column used the full value, so time-suffixed folder names were created and the colons became URL-encoded on the volume; (3) Auto Loader auto-detects partition columns from folder names and infers their type by casting those names — the clean dates parse, the malformed one doesn't; (4) serverless runs ANSI mode, so the failed cast throws and it happens while Auto Loader is merely listing files, before any pipeline code runs; (5) the checkpoint keeps the discovered file list, so every restart re-runs the same failing cast forever — same query id, same sequence number each time. Hence the two-part fix: never create such folders again (date-only partition values) and remove existing state (bad folders + checkpoint).
+
+---
+
+## 24. Request for the purge output
+
+**User:** [repasted the earlier instruction text]
+
+**Assistant:** Since no new output came back, pointed out the purge cell's printed lines (bad-dir list, checkpoint listing, and the post-purge verification) are the single source of truth for which condition was violated: bad folders listed means notebook 01 was never re-run with the fixed code; a checkpoint present before purge was the whole problem; both clean afterwards means just re-import 01, run it, verify, then run 02.
+
+---
+
+## 25. New failure mode — empty source folders
+
+**User:** [pasted `UNABLE_TO_INFER_SCHEMA` errors and `CF_EMPTY_DIR_FOR_SCHEMA_INFERENCE` on the customer folder, plus the batch-fallback failing the same way]
+
+**Assistant:** Confirmed the good news first: the original `CAST_INVALID_INPUT` was gone — the purge had worked. The new error was different and simple: every raw source folder was **empty**, so Auto Loader had nothing to infer a CSV schema from (and the batch fallback failed identically). The landing zone had been wiped and notebook 02 was being run before notebook 01 regenerated the data. Instructed: run 01 first, then check its closing "landing zone after generation" inventory, then run 02.
+
+---
+
+## 26. Empty-folders persist
+
+**User:** [pasted the empty-folder stream error and fallback failures again]
+
+**Assistant:** Entered planning mode and re-read the code: notebook 02's reader only needs populated folders; every notebook loads its paths from the shared setup notebook, so there is no path mismatch in the repo. The decisive unknown was whether notebook 01 had actually completed after the purge — its final inventory block prints per-folder file counts and would settle it. Asked the user directly whether 01 had been run to completion.
+
+---
+
+## 27. Evidence: 01 ran fully
+
+**User:** Ran fully, counts looked fine
+
+**Assistant:** With that answer, the pasted 02 error was most likely stale (from a run that predated 01's completion), or the volume state differed between attempts. Gave a single-cell verification snippet that lists file counts for all seven raw folders; files present → simply re-run 02; zero files → the 01 run that "looked fine" didn't write to this volume (e.g., imported into a different workspace), so re-run it there before 02.
+
+---
+
+## 28. Build — fail-fast guard added
+
+**User:** build
+
+**Assistant:** Verified in the repo that paths are single-sourced (every notebook includes the shared setup notebook via a run-cell, and only that notebook defines the catalog, volume, and raw paths), ruling out a write/read mismatch. Then hardened notebook 02 with a fail-fast guard: before any stream starts it lists each source folder and, if any is empty, aborts with an explicit "run notebook 01 first" message instead of surfacing the cryptic `CF_EMPTY_DIR_FOR_SCHEMA_INFERENCE` / `UNABLE_TO_INFER_SCHEMA` deep inside the stream or the fallback. Syntax-checked the notebook and re-ran the local test suite — 15 passing.
+
+---
+
+## 29. This file — update
+
+**User:** "[path]docs/KNK.md" like previously update the full conversation of you and me without code into this file.
+
+**Assistant:** Appended sections 19–28 (serverless status recap, the malformed-partition-dir root cause and fix, the stale-state diagnosis across three identical failures, the plain-language explanation, the empty-source-folder failures and their resolution, the fail-fast guard added to notebook 02, and this section) following the established format.
+
+---
+
+## 30. Local raw-data snapshot — full audit vs the plan
+
+**User:** [added `data\sales_data\raw_data` to the repo locally] i just want to you to check the data generated is correctly accordingly the plan and document or not.
+
+**Assistant:** Audited the local snapshot programmatically against the plan in notebook 01 (column schemas, row targets, DQ injection rates) and `docs/data_dictionary.md`:
+
+**What matches the plan (values and counts):**
+- Row counts: customers 1,515 (1,500 master + 15 exact duplicates), customer_updates 40 (30 changed + 10 new), products 363 (360 + 3 dupes), sales reps 60, currencies 6 (USD/EUR/GBP/CAD/INR/MXN), regions 12 (R01–R12, JSON), orders 78,344 (matches expected ~78K; range 500001–578344, no gaps), transactions ~1,090 rows in the 3 sampled days (daily volumes consistent with weekend/weekday order counts).
+- DQ injection markers present at the documented rates in transactions: malformed dates (~0.6%), null customer (~0.5%), orphan C99999 (found exactly once), unknown P9999, invalid status/currency, messy status/currency recoverable variants all present in expected proportions.
+- Referential integrity: every order_id referenced by transactions exists in the orders file; the single customer referenced but missing from the customer master is exactly the injected orphan C99999.
+- ID ranges correct: C10001–C11500, P1001–P1360, order_id 500001+.
+
+**What does NOT match the plan:**
+- **Column-scramble:** every file written via the CSV path (all `erp/*.csv` and `orders/`) has values shifted against its header by a consistent fixed permutation (verified across all rows, e.g. orders row = `currency, customer_id, order_date, order_id, order_status, region_id, sales_rep_id, source_system, total_amount`). The committed notebook maps dict rows to the schema **by name**, so it cannot produce this output — the snapshot comes from an older/buggy run or a damaged copy. Transactions (pandas+Arrow path) and the region JSON are correctly aligned, which is why they look fine.
+- **Partial copy:** only 3 of ~710 daily transaction folders exist, with a single part file per folder (other parts of the same write job are missing).
+- Consequence: ingestion of these files would silently put values into the wrong columns in Bronze — **do not upload this folder to the volume**. The volume contents from the user's successful 01 run remain the source of truth; if a re-export is ever needed, take it from Databricks after a clean post-fix run.
+
+**Also done:** added `.gitignore` (ignores `data/`, `__pycache__`, `.venv`, `.pytest_cache`, `.databricks/` internals, `.vscode/`) so the untracked export stays out of the repo; this audit is logged here as section 30.
+
+---
+
+## 31. Fix: full 01 code audit + local regeneration + cleanup utilities
+
+**User:** ok then now fix this, by checking the current updated 01_Generate_Synthetic_ERP_Data.py code. and do need full. also add the in the "00_Setup_Workspace.py" file last - add the code to empty the files and folders in volume. and also add code to remove the bronze, silver, gold schemas and its data components - i will run them manually when ever i needed.
+
+**Assistant:**
+
+1. **Full line-by-line audit of notebook 01** — verdict: **the current code is correct**. Every write path maps dict rows to the schema **by name** (`spark.createDataFrame(rows, schema=cols)`), so it cannot produce column-scrambled files; `dt` is date-only (`substring(transaction_date, 1, 10)`); the seeded RNG (42) and fixed `today` (2026-08-11) make runs deterministic; DQ injection slices are disjoint and match the documented rates; nulls, duplicates and future rows all behave as documented. The old local snapshot's scrambled columns therefore came from an **older/buggy run, not this code**. Only the notebook's own header table was stale and was corrected: regions `~15 → 12`, orders `~95K → ~78K`, customer/product counts updated to include their duplicates.
+
+2. **Notebook 00 — new section 5 "Cleanup utilities — MANUAL ONLY"** (at the end, as requested; everything flag-guarded, nothing runs automatically):
+   - **5a — Purge the raw landing zone:** `PURGE_RAW_DATA = False` flag; when True it deletes **all files and folders** under the volume's raw base (including Auto Loader checkpoints) and recreates the empty base folders, printing before/after state.
+   - **5b — Drop the medallion schemas:** `DROP_MEDALLION_SCHEMAS = False` flag; when True it runs `DROP SCHEMA ... CASCADE` on `bronze`, `silver` and `gold` — removing every table and its data — while leaving the `sales_data` schema and the raw volume untouched. Re-running notebook 00 recreates the schemas idempotently.
+   - Both cells print an explicit "set to True, run, set back to False" instruction.
+
+3. **Full local regeneration ("do need full"):** added `scripts/generate_raw_data_local.py` — a faithful local port of notebook 01 (same seed 42, same constants, same RNG call order; only the write layer differs: plain CSV/JSONL instead of Spark). It wipes the old scrambled snapshot and rewrites the **complete** dataset to `data/sales_data/raw_data`: customers 1,515, products 363, customer_updates 40, sales reps 60, currencies 6, regions 12 (JSON), orders 78,344 (`500001–578344`, no gaps), transactions **260,309 rows across 714 daily folders** (710 real days + 4 future-demo days). `_SUCCESS` markers written per folder like Spark.
+
+4. **Verification of the regenerated data** (same audit tooling as section 30): every CSV now passes header/column-role alignment; DQ markers tally **exactly** with the injected counts (1,543 malformed dates, 515 orphans, 515 bad products, 1,030 bad status, 1,030 bad currency, 8 negatives, 6,443 messy status, 3,105 lowercase currencies, 2,577 duplicates, 4 future rows); referential integrity holds (0 orders missing, exactly 1 customer missing = the injected orphan C99999). The 3 days that existed in the old snapshot (`2024-09-01..03` = 255/338/499 rows) match the new files **exactly** — final proof the old snapshot was this same generator's output, merely column-scrambled and partially copied.
+
+**Notes / caveats:** byte-parity between this port and a Databricks run is expected but not guaranteed across Python runtime versions (both use the same seeded algorithm); today's (2026-08-11) orders carry `total_amount = 0.0` by design (in-progress day, excluded from the totals fill); the port is a reference/regeneration artifact — the Databricks volume remains the authoritative landing zone. All 15 tests still pass.

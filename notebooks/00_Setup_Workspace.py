@@ -170,6 +170,77 @@ print(f"Current date  : {date.today().isoformat()}")
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 5. Cleanup utilities — MANUAL ONLY
+# MAGIC
+# MAGIC ⚠️ **Nothing in this section runs automatically.** Every cell is guarded by
+# MAGIC a flag that defaults to `False`. To use one: set the flag to `True`, run
+# MAGIC the cell, then set it back to `False` — exactly like the
+# MAGIC `RESET_LANDING_ZONE` flag in section 3.
+# MAGIC
+# MAGIC **When to use:**
+# MAGIC - **5a — Purge the raw landing zone:** wipe the volume's raw data files
+# MAGIC   (including Auto Loader checkpoints) before a from-scratch regeneration.
+# MAGIC   Run it, then run notebook `01` to regenerate the exports.
+# MAGIC - **5b — Drop the medallion schemas:** remove `bronze` / `silver` / `gold`
+# MAGIC   and **all their tables and data** (e.g. a clean teardown). Run it, then
+# MAGIC   re-run this notebook (it recreates the schemas idempotently) and the
+# MAGIC   pipeline again if needed.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 5a. Purge the raw-data landing zone (volume)
+# MAGIC Deletes **all files and folders** under `RAW_BASE` — the ERP exports and
+# MAGIC every Auto Loader checkpoint (`_checkpoints/...`) — then recreates the
+# MAGIC base folder structure so notebook 01 can write into it again.
+
+# COMMAND ----------
+
+PURGE_RAW_DATA = False   # <-- set to True, run, then set back to False
+
+if PURGE_RAW_DATA:
+    print("== PURGE: raw landing zone BEFORE ==")
+    try:
+        for f in dbutils.fs.ls(RAW_BASE):
+            print(f"  {f.path}")
+    except Exception:
+        print("  (raw base does not exist yet)")
+    dbutils.fs.rm(RAW_BASE, recurse=True)
+    print(f"Deleted: {RAW_BASE} (files + folders + checkpoints)")
+    for path in [RAW_CUSTOMER, RAW_PRODUCT, RAW_TRANSACT, f"{RAW_BASE}/erp/customer_updates",
+                 f"{RAW_BASE}/erp/region", f"{RAW_BASE}/erp/sales_rep", f"{RAW_BASE}/erp/currency",
+                 f"{RAW_BASE}/orders", CHECKPOINT_BASE]:
+        dbutils.fs.mkdirs(path)
+    print("== PURGE: raw landing zone AFTER ==")
+    print(f"  {RAW_BASE} -> recreated (empty) base folders, ready for notebook 01")
+else:
+    print("PURGE_RAW_DATA is False — nothing deleted. Set it to True in this cell to wipe the raw landing zone.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 5b. Drop the medallion schemas (CASCADE)
+# MAGIC Drops `bronze`, `silver` and `gold` **including every table and all their
+# MAGIC data** (`DROP SCHEMA ... CASCADE`). The `sales_data` schema and the
+# MAGIC `raw_data` volume are left untouched — raw exports survive a schema reset.
+# MAGIC Run this notebook again afterwards to recreate the schemas.
+
+# COMMAND ----------
+
+DROP_MEDALLION_SCHEMAS = False   # <-- set to True, run, then set back to False
+
+if DROP_MEDALLION_SCHEMAS:
+    for schema in ["bronze", "silver", "gold"]:
+        full = f"{CATALOG}.{schema}"
+        spark.sql(f"DROP SCHEMA IF EXISTS {full} CASCADE")
+        print(f"Dropped: {full} (schema + all tables + data)")
+    print("Medallion schemas removed. Re-run this notebook to recreate them, then notebooks 01-10.")
+else:
+    print("DROP_MEDALLION_SCHEMAS is False — nothing dropped. Set it to True in this cell to remove bronze/silver/gold.")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ---
 # MAGIC **Next:** run `01_Generate_Synthetic_ERP_Data` to create realistic source data
 # MAGIC (with deliberate data-quality issues so the Silver layer has something to fix).

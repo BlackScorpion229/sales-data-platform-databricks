@@ -1,0 +1,20 @@
+# Local generated data (partial/misaligned export — volume is the source of truth)
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Databricks CLI
+.databricks/
+!.databricks/bundle/
+
+# VS Code
+.vscode/
+
+# OS
+Thumbs.db
+Desktop.ini

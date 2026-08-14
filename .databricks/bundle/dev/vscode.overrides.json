@@ -1,5 +1,4 @@
 {
   "serverless": true,
-  "useClusterOverride": false,
-  "authProfile": "dev-772ceb8f"
+  "useClusterOverride": false
 }
