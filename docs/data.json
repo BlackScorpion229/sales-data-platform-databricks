@@ -1,0 +1,70 @@
+{
+  "raw_data_tables": {
+    "erp/customer": {
+      "columns": ["customer_id", "customer_name", "customer_type", "customer_segment","country", "state", "city", "region", "industry", "sales_rep_id", "customer_status", "created_date", "updated_date"]
+    },
+    "erp/customer_updates": {
+      "columns": ["customer_id", "customer_name", "customer_type", "customer_segment", "country", "state", "city", "region", "industry", "sales_rep_id", "customer_status", "created_date", "updated_date"]
+    },
+    "erp/product": {
+      "columns": ["product_id", "product_name", "product_category", "product_subcategory", "brand", "unit_price", "cost", "product_status", "effective_date", "updated_date"]
+    },
+    "erp/sales_rep": {
+      "columns": ["sales_rep_id", "sales_rep_name", "region_id", "sales_rep_email", "hire_date", "status"]
+    },
+    "erp/currency": {
+      "columns": ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date"]
+    },
+    "erp/region": {
+      "columns": ["region_id", "region_name", "country", "state", "territory"]
+    },
+    "orders": {
+      "columns": ["order_id", "customer_id", "order_date", "order_status", "total_amount", "currency", "region_id", "sales_rep_id", "source_system"]
+    },
+    "transactions": {
+      "columns": ["transaction_id", "order_id", "transaction_date", "customer_id", "product_id", "quantity", "unit_price", "discount", "tax", "gross_amount", "net_amount", "currency", "region_id", "sales_rep_id", "transaction_status", "source_system"],
+      "partitioned_by": "dt"
+    }
+  },
+  "bronze_tables": {
+    "_audit_columns_all_tables": ["_source_file", "_ingestion_timestamp",
+      "_source_system", "_batch_id", "_record_hash"],
+    "bronze.erp_customer": {
+      "table": "SalesRevenueCustomerAnalytics.bronze.erp_customer",
+      "source": "erp/customer",
+      "columns": ["customer_id", "customer_name", "customer_type", "customer_segment", "country", "state", "city", "region", "industry", "sales_rep_id", "customer_status", "created_date", "updated_date", "_source_file", "_ingestion_timestamp", "_source_system", "_batch_id", "_record_hash"]
+    },
+    "bronze.erp_product": {
+      "table": "SalesRevenueCustomerAnalytics.bronze.erp_product",
+      "source": "erp/product",
+      "columns": ["product_id", "product_name", "product_category", "product_subcategory", "brand", "unit_price", "cost", "product_status", "effective_date", "updated_date", "_source_file", "_ingestion_timestamp", "_source_system", "_batch_id", "_record_hash"]
+    },
+    "bronze.erp_region": {
+      "table": "SalesRevenueCustomerAnalytics.bronze.erp_region",
+      "source": "erp/region",
+      "columns": ["region_id", "region_name", "country", "state", "territory", "_source_file", "_ingestion_timestamp", "_source_system", "_batch_id", "_record_hash"]
+    },
+    "bronze.erp_sales_rep": {
+      "table": "SalesRevenueCustomerAnalytics.bronze.erp_sales_rep",
+      "source": "erp/sales_rep",
+      "columns": ["sales_rep_id", "sales_rep_name", "region_id", "sales_rep_email", "hire_date", "status", "_source_file", "_ingestion_timestamp", "_source_system", "_batch_id", "_record_hash"]
+    },
+    "bronze.erp_currency": {
+      "table": "SalesRevenueCustomerAnalytics.bronze.erp_currency",
+      "source": "erp/currency",
+      "columns": ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date", "_source_file", "_ingestion_timestamp", "_source_system", "_batch_id", "_record_hash"]
+    },
+    "bronze.sales_order": {
+      "table": "SalesRevenueCustomerAnalytics.bronze.sales_order",
+      "source": "orders",
+      "columns": ["order_id", "customer_id", "order_date", "order_status", "total_amount", "currency", "region_id", "sales_rep_id", "source_system", "_source_file", "_ingestion_timestamp", "_source_system", "_batch_id", "_record_hash"]
+    },
+    "bronze.sales_transaction": {
+      "table": "SalesRevenueCustomerAnalytics.bronze.sales_transaction",
+      "source": "transactions",
+      "columns": ["transaction_id", "order_id", "transaction_date", "customer_id", "product_id", "quantity", "unit_price", "discount", "tax", "gross_amount", "net_amount", "currency", "region_id", "sales_rep_id", "transaction_status", "source_system", "_source_file", "_ingestion_timestamp", "_source_system", "_batch_id", "_record_hash", "dt"],
+      "partitioned_by": "dt",
+      "note": "_rescued_data column is dropped on ingest"
+    }
+  }
+}
