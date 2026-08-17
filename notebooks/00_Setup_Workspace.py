@@ -182,6 +182,10 @@ print(f"Current date  : {date.today().isoformat()}")
 # MAGIC   and **all their tables and data** (e.g. a clean teardown). Run it, then
 # MAGIC   re-run this notebook (it recreates the schemas idempotently) and the
 # MAGIC   pipeline again if needed.
+# MAGIC - **5c — Drop the raw-data volume:** remove the `raw_data` UC volume itself
+# MAGIC   (all raw exports + Auto Loader checkpoints). Run it, then re-run this
+# MAGIC   notebook (it recreates the empty volume) and notebook `01` to regenerate
+# MAGIC   the exports.
 
 # COMMAND ----------
 
@@ -234,6 +238,27 @@ if DROP_MEDALLION_SCHEMAS:
     print("Medallion schemas removed. Re-run this notebook to recreate them, then notebooks 01-10.")
 else:
     print("DROP_MEDALLION_SCHEMAS is False — nothing dropped. Set it to True in this cell to remove bronze/silver/gold.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 5c. Drop the raw-data volume (CASCADE)
+# MAGIC Drops the `raw_data` **volume itself** — all raw export files and every
+# MAGIC Auto Loader checkpoint go with it (dropping a volume deletes its data).
+# MAGIC The hosting `sales_data` schema is left in place; re-run this notebook to
+# MAGIC recreate the (empty) volume with `CREATE VOLUME IF NOT EXISTS`.
+
+# COMMAND ----------
+
+DROP_RAW_VOLUME = False   # <-- set to True, run, then set back to False
+
+if DROP_RAW_VOLUME:
+    vol = f"{CATALOG}.sales_data.raw_data"
+    spark.sql(f"DROP VOLUME IF EXISTS {vol}")
+    print(f"Dropped: {vol} (volume + all raw files + checkpoints)")
+    print("Re-run this notebook to recreate the empty volume, then notebook 01 to regenerate exports.")
+else:
+    print("DROP_RAW_VOLUME is False — nothing dropped. Set it to True in this cell to remove the raw_data volume.")
 
 # COMMAND ----------
 
