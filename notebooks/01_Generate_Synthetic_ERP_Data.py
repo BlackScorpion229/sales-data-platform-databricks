@@ -581,14 +581,21 @@ ORD_COLS  = ["order_id", "customer_id", "order_date", "order_status", "total_amo
 TXN_COLS  = ["transaction_id", "order_id", "transaction_date", "customer_id", "product_id",
              "quantity", "unit_price", "discount", "tax", "gross_amount", "net_amount",
              "currency", "region_id", "sales_rep_id", "transaction_status", "source_system"]
+REP_COLS  = ["sales_rep_id", "sales_rep_name", "region_id", "sales_rep_email", "hire_date", "status"]
+CUR_COLS  = ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date"]
+REGION_COLS = ["region_id", "region_name", "country", "state", "territory"]
 
 def write_csv(rows, cols, path):
-    df = spark.createDataFrame(rows, schema=cols)
+    # createDataFrame infers dicts with alphabetically-sorted keys, so a
+    # positional schema (schema=cols) would map values to the WRONG columns
+    # (e.g. effective_date's value under exchange_rate_to_usd). Build the
+    # DataFrame first, then select(*) to enforce order by name.
+    df = spark.createDataFrame(rows).select(*cols)
     df.coalesce(1).write.mode("overwrite").option("header", True).csv(path)
     return df.count()
 
-def write_json(rows, path):
-    df = spark.createDataFrame(rows)
+def write_json(rows, cols, path):
+    df = spark.createDataFrame(rows).select(*cols)
     df.coalesce(1).write.mode("overwrite").json(path)
     return df.count()
 
@@ -596,9 +603,9 @@ n_cust   = write_csv(customers,        CUST_COLS, RAW_CUSTOMER)
 n_prod   = write_csv(products,         PROD_COLS, RAW_PRODUCT)
 n_ord    = write_csv(orders,           ORD_COLS,  f"{RAW_BASE}/orders")
 n_upd    = write_csv(customer_updates, CUST_COLS, f"{RAW_BASE}/erp/customer_updates")
-n_reg    = write_json(REGIONS, f"{RAW_BASE}/erp/region")
-n_rep    = write_csv(sales_reps,       ["sales_rep_id", "sales_rep_name", "region_id", "sales_rep_email", "hire_date", "status"], f"{RAW_BASE}/erp/sales_rep")
-n_cur    = write_csv(CURRENCIES,       ["currency_code", "currency_name", "exchange_rate_to_usd", "effective_date"], f"{RAW_BASE}/erp/currency")
+n_reg    = write_json(REGIONS,         REGION_COLS, f"{RAW_BASE}/erp/region")
+n_rep    = write_csv(sales_reps,       REP_COLS,  f"{RAW_BASE}/erp/sales_rep")
+n_cur    = write_csv(CURRENCIES,       CUR_COLS,  f"{RAW_BASE}/erp/currency")
 
 # transactions partitioned by day -> one file per day under transactions/dt=YYYY-MM-DD/
 # Fast path: build the DataFrame via pandas + Arrow. Spark's native dict->row
@@ -610,7 +617,7 @@ n_cur    = write_csv(CURRENCIES,       ["currency_code", "currency_name", "excha
 # "dt=2024-09-01 08:15:00/" directories whose URL-encoded colons (%3A) break
 # Auto Loader's partition-column timestamp cast downstream.
 import pandas as pd
-txn_df = spark.createDataFrame(pd.DataFrame(txns), schema=TXN_COLS)
+txn_df = spark.createDataFrame(pd.DataFrame(txns), schema=TXN_COLS).select(*TXN_COLS)
 txn_df.withColumn("dt", F.substring(F.col("transaction_date"), 1, 10)) \
     .repartition("dt") \
     .write.mode("overwrite").partitionBy("dt").option("header", True).csv(RAW_TRANSACT)

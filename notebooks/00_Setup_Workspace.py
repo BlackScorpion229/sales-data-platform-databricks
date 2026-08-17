@@ -34,7 +34,7 @@ from pyspark.sql import SparkSession
 from datetime import date
 
 # Catalog/schema names — one catalog, fully qualified in every notebook
-CATALOG = "SalesRevenueCustomerAnalytics"
+CATALOG = "SalesRevenueCustomerAnalytics_DEV"
 BRONZE  = f"{CATALOG}.bronze"
 SILVER  = f"{CATALOG}.silver"
 GOLD    = f"{CATALOG}.gold"

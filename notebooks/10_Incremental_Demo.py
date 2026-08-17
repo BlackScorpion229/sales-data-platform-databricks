@@ -109,7 +109,9 @@ TXN_COLS = ["transaction_id", "order_id", "transaction_date", "customer_id", "pr
 
 from pyspark.sql import functions as F
 
-new_txns = spark.createDataFrame(rows, schema=TXN_COLS)
+# select(*) after createDataFrame: dicts are inferred with alphabetically-sorted
+# keys, so a positional schema would map values to the wrong columns
+new_txns = spark.createDataFrame(rows).select(*TXN_COLS)
 new_txns.coalesce(1).withColumn("dt", F.col("transaction_date")) \
     .write.mode("append").partitionBy("dt").option("header", True).csv(RAW_TRANSACT)
 
