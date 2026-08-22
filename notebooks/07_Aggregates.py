@@ -20,6 +20,7 @@
 # COMMAND ----------
 
 from pyspark.sql import functions as F
+from pyspark.sql.window import Window
 
 fact = spark.read.table(TABLES["gold_fact_sales"])
 date_dim = spark.read.table(TABLES["gold_dim_date"])
