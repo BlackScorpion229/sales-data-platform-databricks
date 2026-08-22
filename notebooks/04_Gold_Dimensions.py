@@ -58,7 +58,7 @@ while cur <= end_date:
     cur += timedelta(days=1)
 
 dim_date = spark.createDataFrame(rows)
-dim_date.write.mode("overwrite").saveAsTable(TABLES["gold_dim_date"])
+dim_date.write.option("overwriteSchema", "true").mode("overwrite").saveAsTable(TABLES["gold_dim_date"])
 print(f"SalesRevenueCustomerAnalytics.gold.dim_date: {len(rows):,} days ({start_date} → {end_date})")
 spark.sql(f"DESCRIBE {TABLES['gold_dim_date']}").show()
 
