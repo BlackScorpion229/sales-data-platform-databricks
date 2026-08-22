@@ -49,6 +49,7 @@ while cur <= end_date:
         "month_name":     cur.strftime("%B"),
         "quarter":        (cur.month - 1) // 3 + 1,
         "year":           cur.year,
+        "year_month":     cur.strftime("%Y-%m"),
         "is_weekend":     cur.weekday() >= 5,
         "fiscal_month":   (cur.month + 8) % 12 + 1,
         "fiscal_quarter": ((cur.month + 8) % 12) // 3 + 1,
