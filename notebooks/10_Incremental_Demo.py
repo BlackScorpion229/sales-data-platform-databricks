@@ -63,7 +63,9 @@ rng = random.Random(20260812)
 new_start = date(2026, 8, 12)
 
 customers = spark.read.table(TABLES["silver_customer"]).collect()
-products  = spark.read.table(TABLES["silver_product"]).select("product_id", "unit_price", "product_category").collect()
+products  = [p for p in spark.read.table(TABLES["silver_product"])
+               .select("product_id", "unit_price", "product_category").collect()
+               if p["unit_price"] is not None]
 fx        = {r["currency_code"]: r["exchange_rate_to_usd"] for r in spark.read.table(f"{SILVER}.exchange_rate").collect()}
 
 cur_w = ["USD"] * 92 + ["EUR"] * 3 + ["GBP"] * 2 + ["CAD"] * 2 + ["INR"] * 1
