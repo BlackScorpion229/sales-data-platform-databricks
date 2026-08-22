@@ -106,21 +106,27 @@ print(f"SalesRevenueCustomerAnalytics.silver.exchange_rate: {exchange_rate.count
 
 # COMMAND ----------
 
-DQ_RULES = [
-    # (rule_id, description, SQL predicate marking a row as INVALID)
-    # NOTE: predicates run on normalized values (uppercase, trimmed, synonyms mapped)
-    ("DQ_001", "completeness: transaction_id not null",       "transaction_id IS NULL"),
-    ("DQ_002", "completeness: customer_id not null",          "customer_id IS NULL"),
-    ("DQ_003", "completeness: product_id not null",           "product_id IS NULL"),
-    ("DQ_004", "completeness: transaction_date not null",     "transaction_date IS NULL"),
-    ("DQ_005", "completeness: net_amount not null",            "net_amount IS NULL"),
-    ("DQ_006", "validity: quantity >= 0",                     "quantity < 0"),
-    ("DQ_007", "validity: net_amount >= 0",                    "net_amount < 0"),
-    ("DQ_008", "validity: transaction_date <= current_date",  "transaction_date > CURRENT_DATE"),
-    ("DQ_009", "domain: currency in known set",               "currency IS NULL OR currency NOT IN ('USD','EUR','GBP','CAD','INR','MXN')"),
-    ("DQ_010", "domain: status in known set",                 "transaction_status IS NULL OR transaction_status NOT IN ('COMPLETED','RETURNED')"),
-    # RI rules DQ_011/DQ_012 are evaluated via left-join checks below (see mark_ri)
-]
+# DQ rules are sourced from the canonical registry (single source of truth).
+# Falls back to an inline copy if the `sales_platform` package isn't on the path
+# (e.g. when this notebook runs on Databricks without the repo mounted).
+try:
+    from sales_platform.dq_rules import COLUMN_RULES as DQ_RULES
+except Exception:
+    DQ_RULES = [
+        # (rule_id, description, SQL predicate marking a row as INVALID)
+        # NOTE: predicates run on normalized values (uppercase, trimmed, synonyms mapped)
+        ("DQ_001", "completeness: transaction_id not null",       "transaction_id IS NULL"),
+        ("DQ_002", "completeness: customer_id not null",          "customer_id IS NULL"),
+        ("DQ_003", "completeness: product_id not null",           "product_id IS NULL"),
+        ("DQ_004", "completeness: transaction_date not null",     "transaction_date IS NULL"),
+        ("DQ_005", "completeness: net_amount not null",            "net_amount IS NULL"),
+        ("DQ_006", "validity: quantity >= 0",                     "quantity < 0"),
+        ("DQ_007", "validity: net_amount >= 0",                    "net_amount < 0"),
+        ("DQ_008", "validity: transaction_date <= current_date",  "transaction_date > CURRENT_DATE"),
+        ("DQ_009", "domain: currency in known set",               "currency IS NULL OR currency NOT IN ('USD','EUR','GBP','CAD','INR','MXN')"),
+        ("DQ_010", "domain: status in known set",                 "transaction_status IS NULL OR transaction_status NOT IN ('COMPLETED','RETURNED')"),
+        # RI rules DQ_011/DQ_012 are evaluated via left-join checks below (see mark_ri)
+    ]
 
 print(f"{len(DQ_RULES)} column DQ rules defined (+2 referential-integrity rules)")
 
@@ -277,11 +283,15 @@ def upsert_silver(target_table, updates_df, key_col):
     """MERGE upsert on natural key. The source is deduplicated by key first:
     Spark MERGE fails if the source contains duplicate keys, and re-runs must
     never create duplicates (doc §26 / §36 idempotency)."""
-    # keep the newest version per key (updated_date desc, ingestion timestamp tiebreak)
-    win = Window.partitionBy(key_col).orderBy(
-        F.col("updated_date").desc_nulls_last(),
-        F.col("_ingestion_timestamp").desc_nulls_last(),
-    )
+    # keep the newest version per key.
+    # `updated_date` exists on customer/product/order sources but NOT on the
+    # transaction stream (which only has _ingestion_timestamp), so fall back
+    # gracefully when the column is absent.
+    order_cols = []
+    if "updated_date" in updates_df.columns:
+        order_cols.append(F.col("updated_date").desc_nulls_last())
+    order_cols.append(F.col("_ingestion_timestamp").desc_nulls_last())
+    win = Window.partitionBy(key_col).orderBy(*order_cols)
     updates_df = updates_df.withColumn("_rn", F.row_number().over(win)).filter(F.col("_rn") == 1).drop("_rn")
 
     if not spark.catalog.tableExists(target_table):

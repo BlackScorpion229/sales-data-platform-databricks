@@ -35,8 +35,8 @@ never rejected; unrecoverable problems fail:
 
 | ID | Rule |
 |----|------|
-| DQ_001–005 | completeness: transaction_id, customer_id, product_id, transaction_date, net_sales not null |
-| DQ_006–008 | validity: quantity ≥ 0, net_sales ≥ 0, transaction_date ≤ current_date |
+| DQ_001–005 | completeness: transaction_id, customer_id, product_id, transaction_date, net_amount not null |
+| DQ_006–008 | validity: quantity ≥ 0, net_amount ≥ 0, transaction_date ≤ current_date |
 | DQ_009 | domain: currency ∈ {USD, EUR, GBP, CAD, INR, MXN} (NULL also fails) |
 | DQ_010 | domain: status ∈ {COMPLETED, RETURNED} after normalization (NULL also fails) |
 | DQ_011–012 | referential integrity: product / customer exists in Silver dims |
