@@ -106,12 +106,6 @@ print(f"SalesRevenueCustomerAnalytics.gold.dim_sales_rep: {sales_rep.count()} ro
 
 # COMMAND ----------
 
-# Allow the SCD2 dimensions to evolve their schema (e.g. when a new surrogate
-# key column is introduced) instead of failing the append with
-# DELTA_METADATA_MISMATCH on a pre-existing table.
-spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
-
-
 def scd2_upsert(target_table, source_df, key_col, attr_cols, start_col, version_col="updated_date"):
     """Type-2 upsert of a master dimension.
     - source_df   : latest state (from Silver)
