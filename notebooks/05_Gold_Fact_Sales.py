@@ -41,7 +41,7 @@ SELECT
     t.order_id,
     d.date_key                                             AS date_key,
     c.customer_key                                         AS customer_key,
-    p.product_key                                          AS product_key,
+    COALESCE(p.product_key, pe.product_key)                AS product_key,
     r.region_key                                           AS region_key,
     sr.sales_rep_key                                       AS sales_rep_key,
     t.quantity,
@@ -49,8 +49,8 @@ SELECT
     t.discount_usd,
     t.tax_usd,
     t.net_sales_usd                                        AS net_sales,
-    ROUND(t.quantity * p.cost, 2)                          AS cost_amount,
-    ROUND(t.net_sales_usd - t.quantity * p.cost, 2)        AS profit_amount,
+    ROUND(t.quantity * COALESCE(p.cost, pe.cost), 2)       AS cost_amount,
+    ROUND(t.net_sales_usd - t.quantity * COALESCE(p.cost, pe.cost), 2) AS profit_amount,
     t.currency,
     t.fx_rate,
     t.transaction_status,
@@ -62,9 +62,14 @@ JOIN {GOLD}.dim_date      d ON d.date_key    = CAST(DATE_FORMAT(t.transaction_da
 JOIN {GOLD}.dim_customer  c ON c.customer_id = t.customer_id
     AND t.transaction_date >= c.effective_start_date
     AND (c.effective_end_date IS NULL OR t.transaction_date < c.effective_end_date)
-JOIN {GOLD}.dim_product   p ON p.product_id  = t.product_id
+LEFT JOIN {GOLD}.dim_product p ON p.product_id = t.product_id
     AND t.transaction_date >= p.effective_start_date
     AND (p.effective_end_date IS NULL OR t.transaction_date < p.effective_end_date)
+LEFT JOIN (
+    SELECT product_id, product_key, cost,
+           ROW_NUMBER() OVER (PARTITION BY product_id ORDER BY effective_start_date ASC) AS _rn
+    FROM {GOLD}.dim_product
+) pe ON pe.product_id = t.product_id AND pe._rn = 1
 JOIN {GOLD}.dim_region    r ON r.region_id   = t.region_id
 JOIN {GOLD}.dim_sales_rep sr ON sr.sales_rep_id = t.sales_rep_id
 """)

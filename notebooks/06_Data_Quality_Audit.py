@@ -85,7 +85,12 @@ null_rows    = bronze_txn.filter(
 invalid_rows = n_rejected - null_rows
 
 # how much revenue was removed (i.e. is *not* in Silver) — should equal rejected
-rev_rejected = quarantine.selectExpr("COALESCE(get_json_object(record_data, '$.net_amount'), 0) AS n").agg(F.sum("n").cast("double").alias("v")).collect()[0]["v"]
+rev_rejected = (
+    quarantine
+    .selectExpr("COALESCE(CAST(get_json_object(record_data, '$.net_amount') AS DOUBLE), 0) AS n")
+    .agg(F.sum("n").alias("v"))
+    .collect()[0]["v"] or 0.0
+)
 
 elapsed = round(time.time() - t0, 2)
 

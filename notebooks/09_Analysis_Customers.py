@@ -20,14 +20,15 @@
 
 display(spark.sql(f"""SELECT
   COUNT(*)                                   AS total_customers,
-  SUM(CASE WHEN customer_status = 'ACTIVE' THEN 1 ELSE 0 END) AS active_customers,
+  SUM(CASE WHEN c.customer_status = 'ACTIVE' THEN 1 ELSE 0 END) AS active_customers,
   COUNT(DISTINCT CASE WHEN is_new_customer THEN customer_key END) AS new_customers_last_month,
   COUNT(DISTINCT CASE WHEN NOT is_new_customer AND revenue_usd > 0 THEN customer_key END) AS returning_customers,
   ROUND(SUM(revenue_usd) /
         NULLIF(COUNT(DISTINCT CASE WHEN revenue_usd > 0 THEN customer_key END), 0), 2) AS avg_revenue_per_customer
-FROM {GOLD}.agg_customer_monthly
-WHERE year_month = (SELECT MAX(year_month) FROM {GOLD}.agg_customer_monthly
-                    WHERE year_month < date_format(CURRENT_DATE, 'yyyy-MM'));"""))
+FROM {GOLD}.agg_customer_monthly a
+JOIN {GOLD}.dim_customer c ON c.customer_key = a.customer_key AND c.is_current = true
+WHERE a.year_month = (SELECT MAX(year_month) FROM {GOLD}.agg_customer_monthly
+                      WHERE year_month < date_format(CURRENT_DATE, 'yyyy-MM'));"""))
 # COMMAND ----------
 
 # MAGIC %md
