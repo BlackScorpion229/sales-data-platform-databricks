@@ -80,7 +80,7 @@ n_dupes = bronze_txn.groupBy("transaction_id").count().filter(F.col("count") > 1
 null_rows    = bronze_txn.filter(
     F.col("transaction_id").isNull() | F.col("customer_id").isNull() |
     F.col("product_id").isNull() | F.col("transaction_date").isNull() |
-    F.col("net_sales").isNull()
+    F.col("net_amount").isNull()
 ).count()
 invalid_rows = n_rejected - null_rows
 
