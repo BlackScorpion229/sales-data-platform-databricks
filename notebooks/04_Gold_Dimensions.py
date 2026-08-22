@@ -211,7 +211,11 @@ def scd2_upsert(target_table, source_df, key_col, attr_cols, start_col, version_
 CUST_ATTRS = ["customer_name", "customer_type", "customer_segment", "country", "state",
               "city", "region", "industry", "sales_rep_id", "customer_status"]
 
-silver_customer = spark.read.table(TABLES["silver_customer"]).withColumnRenamed("customer_id", "customer_id")
+silver_customer = (
+    spark.read.table(TABLES["silver_customer"])
+    .withColumnRenamed("customer_id", "customer_id")
+    .withColumn("customer_key", F.col("customer_id").substr(2, 5).cast("int"))
+)
 
 scd2_upsert(
     target_table = TABLES["gold_dim_customer"],
@@ -233,7 +237,11 @@ scd2_upsert(
 PROD_ATTRS = ["product_name", "product_category", "product_subcategory", "brand",
               "unit_price", "cost", "product_status"]
 
-silver_product = spark.read.table(TABLES["silver_product"]).withColumnRenamed("product_id", "product_id")
+silver_product = (
+    spark.read.table(TABLES["silver_product"])
+    .withColumnRenamed("product_id", "product_id")
+    .withColumn("product_key", F.col("product_id").substr(2, 4).cast("int"))
+)
 
 scd2_upsert(
     target_table = TABLES["gold_dim_product"],
