@@ -95,6 +95,8 @@ print(f"  Checkpoint base      -> {CHECKPOINT_BASE}")
 # COMMAND ----------
 
 
+# The catalog must exist before its schemas/volume can be created.
+spark.sql(f"""CREATE CATALOG IF NOT EXISTS {CATALOG} COMMENT 'Sales Revenue & Customer Analytics lakehouse (medallion + raw-data volume)';""")
 spark.sql(f"""CREATE DATABASE IF NOT EXISTS {BRONZE} COMMENT 'Raw, near-source data as received from ERP/transaction systems';""")
 spark.sql(f"""CREATE DATABASE IF NOT EXISTS {SILVER} COMMENT 'Cleansed, standardized, conformed data';""")
 spark.sql(f"""CREATE DATABASE IF NOT EXISTS {GOLD}   COMMENT 'Business-ready dimensional model for dashboards';""")

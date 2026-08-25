@@ -6,7 +6,7 @@ Pure Python: importable locally (tests) and on Databricks clusters.
 
 from __future__ import annotations
 
-CATALOG = "SalesRevenueCustomerAnalytics"
+CATALOG = "SalesRevenueCustomerAnalyticsKNK"
 BRONZE = f"{CATALOG}.bronze"
 SILVER = f"{CATALOG}.silver"
 GOLD = f"{CATALOG}.gold"
