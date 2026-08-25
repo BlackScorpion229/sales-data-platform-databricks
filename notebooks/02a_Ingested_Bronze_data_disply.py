@@ -33,13 +33,19 @@ BRONZE_TABLES = {
 
 for name, tbl in BRONZE_TABLES.items():
     print(f"=== {tbl} ===")
+    if not spark.catalog.tableExists(tbl):
+        # e.g. erp_customer_updates is only created by notebook 10 (after this one)
+        print(f"  ! table not found — skipped (run notebook 10 first if this table is expected)")
+        print()
+        continue
     try:
         df = spark.read.table(tbl)
         n = df.count()
         print(f"  rows: {n:,}  |  columns: {len(df.columns)}")
         display(df.limit(10))
     except Exception as e:
-        print(f"  ! could not read table: {type(e).__name__}: {e}")
+        msg = str(e).splitlines()[0]
+        print(f"  ! could not read table: {type(e).__name__}: {msg}")
     print()
 
 # COMMAND ----------
@@ -51,6 +57,9 @@ for name, tbl in BRONZE_TABLES.items():
 
 results = []
 for name, tbl in BRONZE_TABLES.items():
+    if not spark.catalog.tableExists(tbl):
+        results.append((name, tbl, None, None))
+        continue
     try:
         df = spark.read.table(tbl)
         results.append((name, tbl, df.count(), len(df.columns)))
