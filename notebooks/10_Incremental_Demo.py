@@ -196,10 +196,28 @@ q_cust = incremental_ingest(
 for q in [q_txn, q_cust]:
     q.awaitTermination()
 
-files_txn = q_txn.lastProgress["numInputFiles"] if q_txn.lastProgress else 0
+def num_input_files(progress):
+    if not progress:
+        return 0
+    if "numInputFiles" in progress:
+        try:
+            return int(progress["numInputFiles"])
+        except (TypeError, ValueError):
+            return 0
+    for src in progress.get("sources", []):
+        m = src.get("metrics", {})
+        if "numInputFiles" in m:
+            try:
+                return int(m["numInputFiles"])
+            except (TypeError, ValueError):
+                return 0
+    return 0
+
+files_txn = num_input_files(q_txn.lastProgress)
 print(f"Auto Loader incremental run:")
 print(f"  transactions    : {files_txn} new file(s) discovered (checkpoint: {CHECKPOINT_BASE}/transaction)")
-print(f"  customer_updates: {q_cust.lastProgress['numInputFiles'] if q_cust.lastProgress else 0} file(s) discovered")
+files_cust = num_input_files(q_cust.lastProgress)
+print(f"  customer_updates: {files_cust} file(s) discovered")
 print(f"Bronze transactions grew by: {table_count(TABLES['bronze_transaction']) - baseline['bronze_transactions']:,} (only the new rows)")
 
 # 3) fold the updates into bronze.erp_customer (SCD2 source for Silver/Gold)
