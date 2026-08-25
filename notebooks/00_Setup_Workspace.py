@@ -12,8 +12,8 @@
 # MAGIC - Centralizes configuration used by every downstream notebook
 # MAGIC
 # MAGIC **Note on Unity Catalog:** everything lives under the single
-# MAGIC `SalesRevenueCustomerAnalytics` catalog — medallion schemas `bronze`,
-# MAGIC `silver`, `gold` plus the `sales_data` schema hosting the raw-data UC
+# MAGIC `{CATALOG}` catalog — medallion schemas `bronze`,
+# MAGIC `silver`, `gold` plus the `{VOLUME_SCHEMA}` schema hosting the raw-data UC
 # MAGIC volume. Every reference in every notebook is **fully qualified**
 # MAGIC (`catalog.schema.table` / `/Volumes/catalog/schema/...`), so the pipeline
 # MAGIC works regardless of the session's default catalog.
@@ -42,10 +42,11 @@ GOLD    = f"{CATALOG}.gold"
 # Raw-data landing zone — a Unity Catalog volume (serverless-compatible)
 # The public DBFS root (`/FileStore`) is disabled on serverless compute, so the
 # ERP export files live in a UC volume instead. Layout mirrors a daily batch:
-#   /Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data/erp/customer/
-#   /Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data/erp/product/
-#   /Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data/transactions/dt=YYYY-MM-DD/
-VOLUME_RAW   = "/Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data"
+#   /Volumes/{CATALOG}/{VOLUME_SCHEMA}/raw_data/erp/customer/
+#   /Volumes/{CATALOG}/{VOLUME_SCHEMA}/raw_data/erp/product/
+#   /Volumes/{CATALOG}/{VOLUME_SCHEMA}/raw_data/transactions/dt=YYYY-MM-DD/
+VOLUME_SCHEMA = "sales_data"        # UC schema hosting the raw-data volume
+VOLUME_RAW    = f"/Volumes/{CATALOG}/{VOLUME_SCHEMA}/raw_data"
 RAW_BASE     = VOLUME_RAW
 RAW_CUSTOMER = f"{RAW_BASE}/erp/customer"
 RAW_PRODUCT  = f"{RAW_BASE}/erp/product"
@@ -111,8 +112,8 @@ display(spark.sql(f"""SHOW DATABASES;"""))
 # MAGIC `/Volumes/...` paths on serverless.
 # MAGIC
 # MAGIC - The `raw_data` volume is created *if not exists* (idempotent) under
-# MAGIC   the `SalesRevenueCustomerAnalytics` catalog
-# MAGIC   → `SalesRevenueCustomerAnalytics.sales_data.raw_data`
+# MAGIC   the `{CATALOG}` catalog
+# MAGIC   → `{CATALOG}.{VOLUME_SCHEMA}.raw_data`
 # MAGIC - `01` writes the synthetic ERP exports there (CSV + one JSON folder)
 # MAGIC - `02` ingests them with Auto Loader (checkpoints under the volume)
 # MAGIC - `10` appends "next-day" files for the incremental demo
@@ -123,8 +124,8 @@ display(spark.sql(f"""SHOW DATABASES;"""))
 # COMMAND ----------
 
 
-spark.sql(f"""CREATE SCHEMA IF NOT EXISTS {CATALOG}.sales_data COMMENT 'Raw-data landing zone for the sales platform';""")
-spark.sql(f"""CREATE VOLUME IF NOT EXISTS {CATALOG}.sales_data.raw_data COMMENT 'ERP export files (serverless-compatible replacement for DBFS /FileStore)';""")
+spark.sql(f"""CREATE SCHEMA IF NOT EXISTS {CATALOG}.{VOLUME_SCHEMA} COMMENT 'Raw-data landing zone for the sales platform';""")
+spark.sql(f"""CREATE VOLUME IF NOT EXISTS {CATALOG}.{VOLUME_SCHEMA}.raw_data COMMENT 'ERP export files (serverless-compatible replacement for DBFS /FileStore)';""")
 # COMMAND ----------
 
 RESET_LANDING_ZONE = False
@@ -222,7 +223,7 @@ else:
 # MAGIC %md
 # MAGIC ### 5b. Drop the medallion schemas (CASCADE)
 # MAGIC Drops `bronze`, `silver` and `gold` **including every table and all their
-# MAGIC data** (`DROP SCHEMA ... CASCADE`). The `sales_data` schema and the
+# MAGIC data** (`DROP SCHEMA ... CASCADE`). The `{VOLUME_SCHEMA}` schema and the
 # MAGIC `raw_data` volume are left untouched — raw exports survive a schema reset.
 # MAGIC Run this notebook again afterwards to recreate the schemas.
 
@@ -242,23 +243,26 @@ else:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 5c. Drop the raw-data volume (CASCADE)
+# MAGIC ### 5c. Drop the raw-data volume + schema (CASCADE)
 # MAGIC Drops the `raw_data` **volume itself** — all raw export files and every
-# MAGIC Auto Loader checkpoint go with it (dropping a volume deletes its data).
-# MAGIC The hosting `sales_data` schema is left in place; re-run this notebook to
-# MAGIC recreate the (empty) volume with `CREATE VOLUME IF NOT EXISTS`.
+# MAGIC Auto Loader checkpoint go with it (dropping a volume deletes its data) — and
+# MAGIC then drops the hosting `{VOLUME_SCHEMA}` schema (CASCADE), so the entire
+# MAGIC raw-data landing zone is removed. Re-run this notebook to recreate the (empty)
+# MAGIC schema and volume with `CREATE SCHEMA` / `CREATE VOLUME IF NOT EXISTS`.
 
 # COMMAND ----------
 
 DROP_RAW_VOLUME = False   # <-- set to True, run, then set back to False
 
 if DROP_RAW_VOLUME:
-    vol = f"{CATALOG}.sales_data.raw_data"
+    vol = f"{CATALOG}.{VOLUME_SCHEMA}.raw_data"
     spark.sql(f"DROP VOLUME IF EXISTS {vol}")
+    spark.sql(f"DROP SCHEMA IF EXISTS {CATALOG}.{VOLUME_SCHEMA} CASCADE")
     print(f"Dropped: {vol} (volume + all raw files + checkpoints)")
-    print("Re-run this notebook to recreate the empty volume, then notebook 01 to regenerate exports.")
+    print(f"Dropped: {CATALOG}.{VOLUME_SCHEMA} (schema hosting the volume)")
+    print("Re-run this notebook to recreate the empty schema/volume, then notebook 01 to regenerate exports.")
 else:
-    print("DROP_RAW_VOLUME is False — nothing dropped. Set it to True in this cell to remove the raw_data volume.")
+    print("DROP_RAW_VOLUME is False — nothing dropped. Set it to True in this cell to remove the raw_data volume and sales_data schema.")
 
 # COMMAND ----------
 

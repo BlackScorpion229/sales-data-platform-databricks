@@ -3,7 +3,7 @@
 # MAGIC # 06 — Data Quality & Audit Framework
 # MAGIC
 # MAGIC **Purpose:** Every pipeline run records structured DQ metrics into
-# MAGIC `SalesRevenueCustomerAnalytics.gold.data_quality_audit` (doc §24 / §34):
+# MAGIC `{GOLD}.data_quality_audit` (doc §24 / §34):
 # MAGIC
 # MAGIC | Metric | Meaning |
 # MAGIC |--------|---------|

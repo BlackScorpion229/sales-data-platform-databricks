@@ -212,7 +212,7 @@ updates = (
     .dropDuplicates(["_record_hash"])
 )
 updates.write.mode("append").saveAsTable(TABLES["bronze_customer"])
-print(f"SalesRevenueCustomerAnalytics.bronze.erp_customer += {updates.count():,} update rows (SCD2 source)")
+print(f"{BRONZE}.erp_customer += {updates.count():,} update rows (SCD2 source)")
 
 # COMMAND ----------
 
@@ -320,7 +320,7 @@ silver_before = table_count(TABLES["silver_transaction"])
 # COMMAND ----------
 
 silver_after = table_count(TABLES["silver_transaction"])
-print(f"SalesRevenueCustomerAnalytics.silver.sales_transaction: {silver_before:,} -> {silver_after:,}"
+print(f"{SILVER}.sales_transaction: {silver_before:,} -> {silver_after:,}"
       + ("  ✓ IDEMPOTENT (no duplicates)" if silver_before == silver_after else "  ✗ CHANGED!"))
 
 display(spark.sql(f"""SELECT * FROM {GOLD}.data_quality_audit ORDER BY run_date DESC, end_time DESC LIMIT 5;"""))

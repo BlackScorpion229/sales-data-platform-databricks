@@ -59,7 +59,7 @@ while cur <= end_date:
 
 dim_date = spark.createDataFrame(rows)
 dim_date.write.option("overwriteSchema", "true").mode("overwrite").saveAsTable(TABLES["gold_dim_date"])
-print(f"SalesRevenueCustomerAnalytics.gold.dim_date: {len(rows):,} days ({start_date} → {end_date})")
+print(f"{GOLD}.dim_date: {len(rows):,} days ({start_date} → {end_date})")
 spark.sql(f"DESCRIBE {TABLES['gold_dim_date']}").show()
 
 # COMMAND ----------
@@ -78,7 +78,7 @@ region = (
     .orderBy("region_key")
 )
 region.write.mode("overwrite").saveAsTable(TABLES["gold_dim_region"])
-print(f"SalesRevenueCustomerAnalytics.gold.dim_region: {region.count()} rows")
+print(f"{GOLD}.dim_region: {region.count()} rows")
 
 sales_rep = (
     spark.read.table(f"{BRONZE}.erp_sales_rep")
@@ -87,7 +87,7 @@ sales_rep = (
     .orderBy("sales_rep_key")
 )
 sales_rep.write.mode("overwrite").saveAsTable(TABLES["gold_dim_sales_rep"])
-print(f"SalesRevenueCustomerAnalytics.gold.dim_sales_rep: {sales_rep.count()} rows")
+print(f"{GOLD}.dim_sales_rep: {sales_rep.count()} rows")
 
 # COMMAND ----------
 

@@ -7,7 +7,7 @@
 # MAGIC
 # MAGIC **What happens here (doc §12):**
 # MAGIC 1. **Data quality validation** — completeness, validity, domain checks per doc §23
-# MAGIC 2. **Quarantine** — invalid records go to `SalesRevenueCustomerAnalytics.silver.sales_quarantine` with
+# MAGIC 2. **Quarantine** — invalid records go to `{SILVER}.sales_quarantine` with
 # MAGIC    structured error reasons (never silently dropped, never fail the pipeline)
 # MAGIC 3. **Deduplication** — duplicates resolved deterministically (keep the earliest
 # MAGIC    ingested version, drop identical duplicates)
@@ -38,7 +38,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 from pyspark.sql.types import DateType
 
-# ---------- SalesRevenueCustomerAnalytics.silver.customer ----------
+# ---------- {SILVER}.customer ----------
 customer_raw = spark.read.table(TABLES["bronze_customer"])
 silver_customer = (
     customer_raw
@@ -60,9 +60,9 @@ silver_customer = (
     .drop("_rn")
 )
 silver_customer.write.mode("overwrite").saveAsTable(TABLES["silver_customer"])
-print(f"SalesRevenueCustomerAnalytics.silver.customer: {silver_customer.count():,} rows (deduped)")
+print(f"{SILVER}.customer: {silver_customer.count():,} rows (deduped)")
 
-# ---------- SalesRevenueCustomerAnalytics.silver.product ----------
+# ---------- {SILVER}.product ----------
 product_raw = spark.read.table(TABLES["bronze_product"])
 silver_product = (
     product_raw
@@ -81,9 +81,9 @@ silver_product = (
     .drop("_rn")
 )
 silver_product.write.mode("overwrite").saveAsTable(TABLES["silver_product"])
-print(f"SalesRevenueCustomerAnalytics.silver.product: {silver_product.count():,} rows (deduped)")
+print(f"{SILVER}.product: {silver_product.count():,} rows (deduped)")
 
-# ---------- SalesRevenueCustomerAnalytics.silver.exchange_rate (reference: currency -> USD) ----------
+# ---------- {SILVER}.exchange_rate (reference: currency -> USD) ----------
 currency_raw = spark.read.table(f"{BRONZE}.erp_currency")
 exchange_rate = (
     currency_raw
@@ -91,7 +91,7 @@ exchange_rate = (
     .withColumn("effective_date",       F.to_date(F.col("effective_date"), "yyyy-MM-dd"))
 )
 exchange_rate.write.mode("overwrite").saveAsTable(f"{SILVER}.exchange_rate")
-print(f"SalesRevenueCustomerAnalytics.silver.exchange_rate: {exchange_rate.count()} rows")
+print(f"{SILVER}.exchange_rate: {exchange_rate.count()} rows")
 
 # COMMAND ----------
 
@@ -233,7 +233,7 @@ ORDER BY n DESC;"""))
 # MAGIC we keep the earliest-ingested version (and drop the rest) so re-ingesting
 # MAGIC the same file never grows the table.
 # MAGIC
-# MAGIC **Currency standardization:** join to `SalesRevenueCustomerAnalytics.silver.exchange_rate` and express
+# MAGIC **Currency standardization:** join to `{SILVER}.exchange_rate` and express
 # MAGIC every monetary column in **USD** (`*_usd` columns) — dashboards can then
 # MAGIC compare revenue across currencies without error.
 
@@ -317,7 +317,7 @@ def upsert_silver(target_table, updates_df, key_col):
     return spark.read.table(target_table).count()
 
 n = upsert_silver(TABLES["silver_transaction"], silver_txn, "transaction_id")
-print(f"SalesRevenueCustomerAnalytics.silver.sales_transaction upserted — total rows: {n:,}")
+print(f"{SILVER}.sales_transaction upserted — total rows: {n:,}")
 
 # COMMAND ----------
 
@@ -338,7 +338,7 @@ order_valid = (
     .drop("fx_currency", "exchange_rate_to_usd")
 )
 n_ord = upsert_silver(TABLES["silver_order"], order_valid, "order_id")
-print(f"SalesRevenueCustomerAnalytics.silver.sales_order upserted — total rows: {n_ord:,}")
+print(f"{SILVER}.sales_order upserted — total rows: {n_ord:,}")
 
 # COMMAND ----------
 

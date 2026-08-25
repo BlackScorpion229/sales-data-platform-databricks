@@ -6,7 +6,7 @@
 # MAGIC Silver transactions to the Gold dimension model — using **as-of SCD2 joins**:
 # MAGIC
 # MAGIC ```
-# MAGIC     SalesRevenueCustomerAnalytics.silver.sales_transaction
+# MAGIC     {SILVER}.sales_transaction
 # MAGIC        ├── dim_date       (ON date_key)
 # MAGIC        ├── dim_customer   (ON customer_id AND transaction_date BETWEEN effective_start/end)
 # MAGIC        ├── dim_product    (ON product_id   AND transaction_date BETWEEN effective_start/end)
@@ -82,7 +82,7 @@ fact_prep.select("sales_key", "date_key", "customer_key", "product_key", "region
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2. Idempotent upsert into `SalesRevenueCustomerAnalytics.gold.fact_sales`
+# MAGIC ## 2. Idempotent upsert into `{GOLD}.fact_sales`
 # MAGIC MERGE on `sales_key` (the unique transaction id) — re-runs and incremental
 # MAGIC loads simply refresh changed rows.
 

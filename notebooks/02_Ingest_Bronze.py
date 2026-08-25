@@ -3,7 +3,7 @@
 # MAGIC # 02 — Bronze Layer: Auto Loader Ingestion
 # MAGIC
 # MAGIC **Purpose:** Ingests the raw ERP exports from the **UC volume landing zone**
-# MAGIC (`/Volumes/SalesRevenueCustomerAnalytics/sales_data/raw_data`) into the `SalesRevenueCustomerAnalytics.bronze.*` Delta tables
+# MAGIC (`{VOLUME_RAW}`) into the `{BRONZE}.*` Delta tables
 # MAGIC using **Auto Loader** (`cloudFiles`):
 # MAGIC - **Incremental + exactly-once**: checkpoints under the volume track every
 # MAGIC   file — new files (e.g. notebook 10's "next-day" exports) are picked up
