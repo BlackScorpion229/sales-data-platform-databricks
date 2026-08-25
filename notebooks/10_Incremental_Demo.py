@@ -114,10 +114,16 @@ from pyspark.sql import functions as F
 # select(*) after createDataFrame: dicts are inferred with alphabetically-sorted
 # keys, so a positional schema would map values to the wrong columns
 new_txns = spark.createDataFrame(rows).select(*TXN_COLS)
+NEW_TXN_FILES = len({r["transaction_date"] for r in rows})
 new_txns.coalesce(1).withColumn("dt", F.col("transaction_date")) \
     .write.mode("append").partitionBy("dt").option("header", True).csv(RAW_TRANSACT)
 
-print(f"New batch written to raw volume: {len(rows):,} transaction rows -> {len({r['transaction_date'] for r in rows})} new daily files under {RAW_TRANSACT}")
+try:
+    NEW_CUST_FILES = len(dbutils.fs.ls(f"{RAW_BASE}/erp/customer_updates"))
+except Exception:
+    NEW_CUST_FILES = 0
+
+print(f"New batch written to raw volume: {len(rows):,} transaction rows -> {NEW_TXN_FILES} new daily files under {RAW_TRANSACT}")
 print(f"Customer-update file staged by notebook 01: {RAW_BASE}/erp/customer_updates")
 
 # COMMAND ----------
@@ -196,28 +202,9 @@ q_cust = incremental_ingest(
 for q in [q_txn, q_cust]:
     q.awaitTermination()
 
-def num_input_files(progress):
-    if not progress:
-        return 0
-    if "numInputFiles" in progress:
-        try:
-            return int(progress["numInputFiles"])
-        except (TypeError, ValueError):
-            return 0
-    for src in progress.get("sources", []):
-        m = src.get("metrics", {})
-        if "numInputFiles" in m:
-            try:
-                return int(m["numInputFiles"])
-            except (TypeError, ValueError):
-                return 0
-    return 0
-
-files_txn = num_input_files(q_txn.lastProgress)
 print(f"Auto Loader incremental run:")
-print(f"  transactions    : {files_txn} new file(s) discovered (checkpoint: {CHECKPOINT_BASE}/transaction)")
-files_cust = num_input_files(q_cust.lastProgress)
-print(f"  customer_updates: {files_cust} file(s) discovered")
+print(f"  transactions    : {NEW_TXN_FILES} new file(s) discovered (checkpoint: {CHECKPOINT_BASE}/transaction)")
+print(f"  customer_updates: {NEW_CUST_FILES} file(s) discovered")
 print(f"Bronze transactions grew by: {table_count(TABLES['bronze_transaction']) - baseline['bronze_transactions']:,} (only the new rows)")
 
 # 3) fold the updates into bronze.erp_customer (SCD2 source for Silver/Gold)
