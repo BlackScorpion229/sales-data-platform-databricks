@@ -128,8 +128,9 @@ display(spark.sql(f"""SELECT * FROM {GOLD}.data_quality_audit ORDER BY run_date 
 
 # MAGIC %md
 # MAGIC ## 4. Reconciliation: source vs Silver (doc §40)
-# MAGIC Compares Bronze (raw) revenue against Silver revenue. The difference must
-# MAGIC equal exactly what was quarantined — anything else means data was lost.
+# MAGIC Compares Bronze net revenue (normalised to USD, de-duplicated) against
+# MAGIC Silver + Quarantine revenue (both USD). The difference must be within
+# MAGIC tolerance — anything else means data was lost.
 
 # COMMAND ----------
 
@@ -137,18 +138,36 @@ from pyspark.sql import functions as F
 
 tol_usd = 0.01  # tolerance in USD (business-defined in production)
 
-bronze_net = bronze_txn.selectExpr("CAST(net_amount AS DOUBLE) AS n").selectExpr("COALESCE(SUM(n),0) AS v").collect()[0]["v"]
-silver_net = silver_txn.agg(F.sum("net_sales_usd")).collect()[0][0] or 0.0
-quarantined_net = (spark.table(f"{SILVER}.sales_quarantine")
-                   .selectExpr("COALESCE(CAST(get_json_object(record_data, '$.net_amount') AS DOUBLE), 0) AS n")
-                   .selectExpr("COALESCE(SUM(n),0) AS v").collect()[0]["v"])
+# Currency-aware reconciliation (doc §40): every side is normalised to USD and
+# Bronze is de-duplicated (Silver de-dups by transaction_id) so the identity
+#   source(Bronze, dedup) == cleaned(Silver) + rejected(Quarantine)
+# holds. Bronze and the quarantine payload carry mixed original currencies, while
+# Silver already stores net_sales_usd — comparing them raw would show a spurious
+# FX-driven MISMATCH, not actual data loss.
+fx = (spark.table(f"{SILVER}.exchange_rate")
+        .select(F.col("currency_code").alias("fx_ccy"),
+                F.col("exchange_rate_to_usd").cast("double").alias("rate")))
 
-difference = abs(bronze_net - (silver_net + quarantined_net))
+bronze_usd = (bronze_txn.dropDuplicates(["transaction_id"])
+    .join(fx, bronze_txn["currency"] == F.col("fx_ccy"), "left")
+    .selectExpr("COALESCE(SUM(ROUND(net_amount * COALESCE(rate, 1.0), 2)), 0) AS v")
+    .collect()[0]["v"])
+
+silver_net = silver_txn.agg(F.sum("net_sales_usd")).collect()[0][0] or 0.0
+
+quarantined_usd = (quarantine
+    .selectExpr("COALESCE(CAST(get_json_object(record_data, '$.net_amount') AS DOUBLE), 0) AS amt",
+                "COALESCE(CAST(get_json_object(record_data, '$.currency') AS STRING), 'USD') AS ccy")
+    .join(fx, F.col("ccy") == F.col("fx_ccy"), "left")
+    .selectExpr("COALESCE(SUM(ROUND(amt * COALESCE(rate, 1.0), 2)), 0) AS v")
+    .collect()[0]["v"])
+
+difference = abs(bronze_usd - (silver_net + quarantined_usd))
 status = "RECONCILED" if difference <= tol_usd else "MISMATCH"
 
-print(f"Bronze net revenue  : {bronze_net:>16,.2f}")
-print(f"Silver net revenue  : {silver_net:>16,.2f}")
-print(f"Quarantined revenue : {quarantined_net:>16,.2f}")
+print(f"Bronze net revenue (USD)  : {bronze_usd:>16,.2f}")
+print(f"Silver net revenue (USD)  : {silver_net:>16,.2f}")
+print(f"Quarantined revenue (USD) : {quarantined_usd:>16,.2f}")
 print(f"Bronze - (Silver + Quarantine) = {difference:>16,.2f}  →  {status}")
 
 # COMMAND ----------
