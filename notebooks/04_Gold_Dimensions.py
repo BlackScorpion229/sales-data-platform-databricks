@@ -183,6 +183,9 @@ def scd2_upsert(target_table, source_df, key_col, attr_cols, start_col, version_
     )
 
     # 3) apply: update closes first (they share the key), then append new versions
+    n_closes = closes.count()
+    n_opens = new_versions.count()
+
     closes.createOrReplaceTempView("closes_v")
     spark.sql(f"""
         MERGE INTO {target_table} t
@@ -197,7 +200,7 @@ def scd2_upsert(target_table, source_df, key_col, attr_cols, start_col, version_
 
     tgt_after = spark.read.table(target_table)
     n_cur = tgt_after.filter("is_current = true").count()
-    print(f"  [{target_table}] closed {closes.count():,} | opened {new_versions.count():,} "
+    print(f"  [{target_table}] closed {n_closes:,} | opened {n_opens:,} "
           f"| total {tgt_after.count():,} ({n_cur:,} current)")
 
 # COMMAND ----------

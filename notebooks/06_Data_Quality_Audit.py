@@ -77,12 +77,16 @@ n_rejected  = quarantine.count()
 n_dupes = bronze_txn.groupBy("transaction_id").count().filter(F.col("count") > 1).count()
 
 # nulls / invalids = rows failing completeness vs validity/domain/RI rules
-null_rows    = bronze_txn.filter(
+null_rows = bronze_txn.filter(
     F.col("transaction_id").isNull() | F.col("customer_id").isNull() |
     F.col("product_id").isNull() | F.col("transaction_date").isNull() |
     F.col("net_amount").isNull()
 ).count()
-invalid_rows = n_rejected - null_rows
+
+# invalid_rows: rows rejected for validity/domain/RI reasons (not nulls).
+# n_rejected = total quarantine rows (cumulative across runs), so we cap
+# to avoid negative when null_rows exceeds cumulative n_rejected.
+invalid_rows = max(0, n_rejected - null_rows)
 
 # how much revenue was removed (i.e. is *not* in Silver) — should equal rejected
 rev_rejected = (
@@ -148,8 +152,13 @@ fx = (spark.table(f"{SILVER}.exchange_rate")
         .select(F.col("currency_code").alias("fx_ccy"),
                 F.col("exchange_rate_to_usd").cast("double").alias("rate")))
 
+# Bronze/quarantine carry the RAW currency codes (incl. lowercase "usd"/"eur"
+# from notebook 01's deliberate DQ). Normalize them exactly like Silver does
+# (upper + trim) so they join the FX table — otherwise those rows are summed at
+# face value while Silver converts them, leaving a spurious FX-driven MISMATCH.
 bronze_usd = (bronze_txn.dropDuplicates(["transaction_id"])
-    .join(fx, bronze_txn["currency"] == F.col("fx_ccy"), "left")
+    .withColumn("ccy_norm", F.upper(F.trim(bronze_txn["currency"])))
+    .join(fx, F.col("ccy_norm") == F.col("fx_ccy"), "left")
     .selectExpr("COALESCE(SUM(ROUND(net_amount * COALESCE(rate, 1.0), 2)), 0) AS v")
     .collect()[0]["v"])
 
@@ -158,7 +167,8 @@ silver_net = silver_txn.agg(F.sum("net_sales_usd")).collect()[0][0] or 0.0
 quarantined_usd = (quarantine
     .selectExpr("COALESCE(CAST(get_json_object(record_data, '$.net_amount') AS DOUBLE), 0) AS amt",
                 "COALESCE(CAST(get_json_object(record_data, '$.currency') AS STRING), 'USD') AS ccy")
-    .join(fx, F.col("ccy") == F.col("fx_ccy"), "left")
+    .withColumn("ccy_norm", F.upper(F.trim(F.col("ccy"))))
+    .join(fx, F.col("ccy_norm") == F.col("fx_ccy"), "left")
     .selectExpr("COALESCE(SUM(ROUND(amt * COALESCE(rate, 1.0), 2)), 0) AS v")
     .collect()[0]["v"])
 
