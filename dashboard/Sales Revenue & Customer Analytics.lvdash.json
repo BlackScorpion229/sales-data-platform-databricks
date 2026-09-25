@@ -2258,11 +2258,11 @@
         "measures": [
           {
             "name": "total_revenue",
-            "expr": "SUM(net_sales)",
+            "expr": "SUM(net_sales) * 83.0",
             "displayName": "Total Revenue",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2271,11 +2271,11 @@
           },
           {
             "name": "total_gross_sales",
-            "expr": "SUM(gross_amount_usd)",
+            "expr": "SUM(gross_amount_usd) * 83.0",
             "displayName": "Total Gross Sales",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2284,11 +2284,11 @@
           },
           {
             "name": "total_profit",
-            "expr": "SUM(profit_amount)",
+            "expr": "SUM(profit_amount) * 83.0",
             "displayName": "Total Profit",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2297,11 +2297,11 @@
           },
           {
             "name": "total_cost",
-            "expr": "SUM(cost_amount)",
+            "expr": "SUM(cost_amount) * 83.0",
             "displayName": "Total Cost",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2310,11 +2310,11 @@
           },
           {
             "name": "total_discount",
-            "expr": "SUM(discount_usd)",
+            "expr": "SUM(discount_usd) * 83.0",
             "displayName": "Total Discount",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2323,11 +2323,11 @@
           },
           {
             "name": "total_tax",
-            "expr": "SUM(tax_usd)",
+            "expr": "SUM(tax_usd) * 83.0",
             "displayName": "Total Tax",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2408,11 +2408,11 @@
           },
           {
             "name": "avg_order_value",
-            "expr": "SUM(net_sales) / COUNT(DISTINCT order_id)",
+            "expr": "SUM(net_sales) * 83.0 / COUNT(DISTINCT order_id)",
             "displayName": "Avg Order Value",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2445,11 +2445,11 @@
           },
           {
             "name": "avg_selling_price",
-            "expr": "SUM(net_sales) / SUM(quantity)",
+            "expr": "SUM(net_sales) * 83.0 / SUM(quantity)",
             "displayName": "Average Selling Price",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2458,11 +2458,86 @@
           },
           {
             "name": "revenue_per_customer",
-            "expr": "SUM(net_sales) / COUNT(DISTINCT customer_key)",
+            "expr": "SUM(net_sales) * 83.0 / COUNT(DISTINCT customer_key)",
             "displayName": "Revenue Per Customer",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          },
+          {
+            "name": "avg_order_size",
+            "expr": "SUM(quantity) / COUNT(DISTINCT order_id)",
+            "displayName": "Avg Order Size (Units)",
+            "format": {
+              "type": "number",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          },
+          {
+            "name": "gross_margin",
+            "expr": "(SUM(gross_amount_usd) - SUM(cost_amount)) / SUM(gross_amount_usd)",
+            "displayName": "Gross Margin",
+            "format": {
+              "type": "percentage",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          },
+          {
+            "name": "tax_rate",
+            "expr": "SUM(tax_usd) / SUM(net_sales)",
+            "displayName": "Tax Rate",
+            "format": {
+              "type": "percentage",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          },
+          {
+            "name": "sales_rep_productivity",
+            "expr": "SUM(net_sales) * 83.0 / COUNT(DISTINCT sales_rep_key)",
+            "displayName": "Sales Rep Productivity",
+            "format": {
+              "type": "currency",
+              "currencyCode": "INR",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          },
+          {
+            "name": "revenue_per_region",
+            "expr": "SUM(net_sales) * 83.0 / COUNT(DISTINCT region_key)",
+            "displayName": "Revenue Per Region",
+            "format": {
+              "type": "currency",
+              "currencyCode": "INR",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          },
+          {
+            "name": "profit_per_unit",
+            "expr": "SUM(profit_amount) * 83.0 / SUM(quantity)",
+            "displayName": "Profit Per Unit",
+            "format": {
+              "type": "currency",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2471,7 +2546,7 @@
           }
         ],
         "version": "1.1",
-        "comment": "Transaction-level sales fact table with financial KPIs",
+        "comment": "Transaction-level sales fact table with financial KPIs (currency converted to INR at 83.0 INR/USD)",
         "dimensions": [
           {
             "name": "transaction_date",
@@ -2519,11 +2594,11 @@
         "measures": [
           {
             "name": "revenue_usd",
-            "expr": "SUM(revenue_usd)",
-            "displayName": "Revenue (USD)",
+            "expr": "SUM(revenue_usd) * fx_rate",
+            "displayName": "Revenue (INR)",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2532,11 +2607,11 @@
           },
           {
             "name": "profit_usd",
-            "expr": "SUM(profit_usd)",
-            "displayName": "Profit (USD)",
+            "expr": "SUM(profit_usd) * fx_rate",
+            "displayName": "Profit (INR)",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2578,10 +2653,23 @@
                 "places": 0.0
               }
             }
+          },
+          {
+            "name": "net_sales_per_line_item",
+            "expr": "SUM(revenue_usd) * fx_rate / SUM(line_items)",
+            "displayName": "Net Sales Per Line Item",
+            "format": {
+              "type": "currency",
+              "currencyCode": "INR",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
           }
         ],
         "version": "1.1",
-        "comment": "Daily aggregated revenue by region and product category",
+        "comment": "Daily aggregated revenue by region and product category (currency converted to INR at adjustable rate)",
         "dimensions": [
           {
             "name": "calendar_date",
@@ -2603,6 +2691,13 @@
             "expr": "transaction_status",
             "displayName": "Transaction Status"
           }
+        ],
+        "parameters": [
+          {
+            "name": "fx_rate",
+            "dataType": "DOUBLE",
+            "default": 95.0
+          }
         ]
       }
     },
@@ -2614,11 +2709,11 @@
         "measures": [
           {
             "name": "revenue_usd",
-            "expr": "SUM(revenue_usd)",
-            "displayName": "Revenue (USD)",
+            "expr": "SUM(revenue_usd) * 83.0",
+            "displayName": "Revenue (INR)",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2627,11 +2722,11 @@
           },
           {
             "name": "profit_usd",
-            "expr": "SUM(profit_usd)",
-            "displayName": "Profit (USD)",
+            "expr": "SUM(profit_usd) * 83.0",
+            "displayName": "Profit (INR)",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2685,10 +2780,22 @@
                 "places": 0.0
               }
             }
+          },
+          {
+            "name": "customer_retention_rate",
+            "expr": "SUM(CASE WHEN NOT is_new_customer THEN 1 ELSE 0 END) * 100.0 / COUNT(1)",
+            "displayName": "Customer Retention Rate",
+            "format": {
+              "type": "percentage",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
           }
         ],
         "version": "1.1",
-        "comment": "Monthly aggregated customer metrics by segment, type, and country",
+        "comment": "Monthly aggregated customer metrics by segment, type, and country (currency converted to INR at 83.0 INR/USD)",
         "dimensions": [
           {
             "name": "year_month",
@@ -2731,11 +2838,11 @@
         "measures": [
           {
             "name": "total_lifetime_revenue",
-            "expr": "SUM(lifetime_revenue)",
+            "expr": "SUM(lifetime_revenue) * 83.0",
             "displayName": "Total Lifetime Revenue",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2744,11 +2851,11 @@
           },
           {
             "name": "avg_lifetime_revenue",
-            "expr": "AVG(lifetime_revenue)",
+            "expr": "AVG(lifetime_revenue) * 83.0",
             "displayName": "Avg Lifetime Revenue",
             "format": {
               "type": "currency",
-              "currencyCode": "USD",
+              "currencyCode": "INR",
               "decimalPlaces": {
                 "type": "exact",
                 "places": 2.0
@@ -2769,7 +2876,7 @@
           }
         ],
         "version": "1.1",
-        "comment": "Customer segmentation with lifetime revenue and segment values",
+        "comment": "Customer segmentation with lifetime revenue and segment values (currency converted to INR at 83.0 INR/USD)",
         "dimensions": [
           {
             "name": "customer_segment_value",
@@ -3039,9 +3146,9 @@
       "queryLines": [
         "SELECT\n",
         "  p.product_name,\n",
-        "  SUM(f.net_sales) as revenue_usd,\n",
+        "  SUM(f.net_sales) * 83.0 as revenue_usd,\n",
         "  SUM(f.quantity) as quantity_sold,\n",
-        "  SUM(f.profit_amount) as profit_usd\n",
+        "  SUM(f.profit_amount) * 83.0 as profit_usd\n",
         "FROM\n",
         "  fact_sales f\n",
         "    JOIN dim_product p\n",
@@ -3062,7 +3169,7 @@
       "queryLines": [
         "SELECT\n",
         "  p.product_name,\n",
-        "  SUM(f.net_sales) as revenue_usd,\n",
+        "  SUM(f.net_sales) * 83.0 as revenue_usd,\n",
         "  SUM(f.quantity) as quantity_sold\n",
         "FROM\n",
         "  fact_sales f\n",
@@ -3086,7 +3193,7 @@
         "  c.customer_name,\n",
         "  c.customer_segment,\n",
         "  c.customer_type,\n",
-        "  SUM(f.net_sales) as revenue_usd,\n",
+        "  SUM(f.net_sales) * 83.0 as revenue_usd,\n",
         "  COUNT(DISTINCT f.order_id) as orders\n",
         "FROM\n",
         "  fact_sales f\n",
@@ -3103,6 +3210,112 @@
       ],
       "catalog": "salesrevenuecustomeranalyticsknk",
       "schema": "gold"
+    },
+    {
+      "name": "revenue_concentration",
+      "displayName": "Revenue Concentration (Top 10)",
+      "queryLines": [
+        "WITH customer_rev AS (\n",
+        "  SELECT\n",
+        "    customer_key,\n",
+        "    SUM(net_sales) AS revenue\n",
+        "  FROM\n",
+        "    salesrevenuecustomeranalyticsknk.gold.fact_sales\n",
+        "  GROUP BY\n",
+        "    customer_key\n",
+        "),\n",
+        "top_10 AS (\n",
+        "  SELECT\n",
+        "    SUM(revenue) AS top_revenue\n",
+        "  FROM\n",
+        "    (\n",
+        "      SELECT\n",
+        "        revenue,\n",
+        "        ROW_NUMBER() OVER (ORDER BY revenue DESC) AS rn\n",
+        "      FROM\n",
+        "        customer_rev\n",
+        "    )\n",
+        "  WHERE\n",
+        "    rn <= 10\n",
+        "),\n",
+        "total_rev AS (\n",
+        "  SELECT\n",
+        "    SUM(revenue) AS total_revenue\n",
+        "  FROM\n",
+        "    customer_rev\n",
+        ")\n",
+        "SELECT\n",
+        "  top_revenue * 100.0 / total_revenue AS revenue_concentration_pct\n",
+        "FROM\n",
+        "  top_10,\n",
+        "  total_rev"
+      ]
+    },
+    {
+      "name": "repeat_purchase_rate",
+      "displayName": "Repeat Purchase Rate",
+      "queryLines": [
+        "WITH customer_orders AS (\n",
+        "  SELECT\n",
+        "    customer_key,\n",
+        "    COUNT(DISTINCT transaction_date) AS order_count\n",
+        "  FROM\n",
+        "    salesrevenuecustomeranalyticsknk.gold.fact_sales\n",
+        "  GROUP BY\n",
+        "    customer_key\n",
+        "),\n",
+        "repeat_customers AS (\n",
+        "  SELECT\n",
+        "    COUNT(*) AS repeat_count\n",
+        "  FROM\n",
+        "    customer_orders\n",
+        "  WHERE\n",
+        "    order_count > 1\n",
+        "),\n",
+        "total_customers AS (\n",
+        "  SELECT\n",
+        "    COUNT(DISTINCT customer_key) AS total_count\n",
+        "  FROM\n",
+        "    salesrevenuecustomeranalyticsknk.gold.fact_sales\n",
+        ")\n",
+        "SELECT\n",
+        "  repeat_count * 100.0 / total_count AS repeat_purchase_rate_pct\n",
+        "FROM\n",
+        "  repeat_customers,\n",
+        "  total_customers"
+      ]
+    },
+    {
+      "name": "category_market_share",
+      "displayName": "Category Market Share",
+      "queryLines": [
+        "SELECT\n",
+        "  product_category,\n",
+        "  SUM(revenue_usd) AS category_revenue,\n",
+        "  SUM(revenue_usd) * 100.0 / SUM(SUM(revenue_usd)) OVER () AS market_share_pct\n",
+        "FROM\n",
+        "  salesrevenuecustomeranalyticsknk.gold.agg_revenue_daily\n",
+        "GROUP BY\n",
+        "  product_category\n",
+        "ORDER BY\n",
+        "  market_share_pct DESC"
+      ]
+    },
+    {
+      "name": "fx_rate_options",
+      "displayName": "FX Rate Options",
+      "queryLines": [
+        "SELECT\n",
+        "  explode(array(83.0, 85.0, 90.0, 95.0, 100.0)) AS fx_rate"
+      ]
+    },
+    {
+      "name": "select_fx_rate",
+      "displayName": "select_fx_rate",
+      "queryLines": [
+        "select\n",
+        "  explode(array(83.0, 85.0, 90.0, 95.0, 100.0)) as fx_rate"
+      ]
     }
   ],
   "relationshipGraphs": [
@@ -3227,6 +3440,26 @@
         {
           "name": "Top_10_Customers_by_Sales",
           "datasetName": "top_customers_sales"
+        },
+        {
+          "name": "Revenue_Concentration_Top_10",
+          "datasetName": "revenue_concentration"
+        },
+        {
+          "name": "Repeat_Purchase_Rate",
+          "datasetName": "repeat_purchase_rate"
+        },
+        {
+          "name": "Category_Market_Share",
+          "datasetName": "category_market_share"
+        },
+        {
+          "name": "FX_Rate_Options",
+          "datasetName": "fx_rate_options"
+        },
+        {
+          "name": "select_fx_rate",
+          "datasetName": "select_fx_rate"
         }
       ],
       "relationships": [
@@ -4763,6 +4996,342 @@
             "width": 12,
             "height": 7
           }
+        },
+        {
+          "widget": {
+            "name": "kpi_gross_margin",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Fact_Sales_KPIs__gross_margin)",
+                      "expression": "MEASURE(`Fact_Sales_KPIs`.`gross_margin`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Gross Margin"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Fact_Sales_KPIs__gross_margin)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 52,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_tax_rate",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Fact_Sales_KPIs__tax_rate)",
+                      "expression": "MEASURE(`Fact_Sales_KPIs`.`tax_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Tax Rate"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Fact_Sales_KPIs__tax_rate)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 52,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_avg_order_size",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Fact_Sales_KPIs__avg_order_size)",
+                      "expression": "MEASURE(`Fact_Sales_KPIs`.`avg_order_size`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Order Size"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Fact_Sales_KPIs__avg_order_size)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 52,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_sales_rep_productivity",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Fact_Sales_KPIs__sales_rep_productivity)",
+                      "expression": "MEASURE(`Fact_Sales_KPIs`.`sales_rep_productivity`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Sales Rep Productivity"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Fact_Sales_KPIs__sales_rep_productivity)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 52,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_revenue_per_region",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Fact_Sales_KPIs__revenue_per_region)",
+                      "expression": "MEASURE(`Fact_Sales_KPIs`.`revenue_per_region`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue Per Region"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Fact_Sales_KPIs__revenue_per_region)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 55,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_profit_per_unit",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Fact_Sales_KPIs__profit_per_unit)",
+                      "expression": "MEASURE(`Fact_Sales_KPIs`.`profit_per_unit`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Profit Per Unit"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Fact_Sales_KPIs__profit_per_unit)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 55,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_net_sales_per_line_item",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Daily_Revenue_KPIs__net_sales_per_line_item)",
+                      "expression": "MEASURE(`Daily_Revenue_KPIs`.`net_sales_per_line_item`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Net Sales Per Line Item"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Daily_Revenue_KPIs__net_sales_per_line_item)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 55,
+            "width": 3,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_revenue_concentration",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "sum(Revenue_Concentration_Top_10__revenue_concentration_pct)",
+                      "expression": "SUM(`Revenue_Concentration_Top_10`.`revenue_concentration_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue Concentration"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(Revenue_Concentration_Top_10__revenue_concentration_pct)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 55,
+            "width": 3,
+            "height": 3
+          }
         }
       ],
       "pageType": "PAGE_TYPE_CANVAS",
@@ -5348,6 +5917,132 @@
             "width": 4,
             "height": 7
           }
+        },
+        {
+          "widget": {
+            "name": "kpi_retention_rate",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Monthly_Customer_KPIs__customer_retention_rate)",
+                      "expression": "MEASURE(`Monthly_Customer_KPIs`.`customer_retention_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Customer Retention Rate"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Monthly_Customer_KPIs__customer_retention_rate)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 26,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_repeat_purchase",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "sum(Repeat_Purchase_Rate__repeat_purchase_rate_pct)",
+                      "expression": "SUM(`Repeat_Purchase_Rate`.`repeat_purchase_rate_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Repeat Purchase Rate"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(Repeat_Purchase_Rate__repeat_purchase_rate_pct)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 26,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_clv",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Customer_Segmentation_KPIs__avg_lifetime_revenue)",
+                      "expression": "MEASURE(`Customer_Segmentation_KPIs`.`avg_lifetime_revenue`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Customer Lifetime Value"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Customer_Segmentation_KPIs__avg_lifetime_revenue)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 26,
+            "width": 4,
+            "height": 3
+          }
         }
       ],
       "pageType": "PAGE_TYPE_CANVAS",
@@ -5908,6 +6603,66 @@
             "width": 12,
             "height": 7
           }
+        },
+        {
+          "widget": {
+            "name": "chart_market_share",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Category_Market_Share__product_category",
+                      "expression": "`Category_Market_Share`.`product_category`"
+                    },
+                    {
+                      "name": "sum(Category_Market_Share__market_share_pct)",
+                      "expression": "SUM(`Category_Market_Share`.`market_share_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Category Market Share"
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "Category_Market_Share__product_category",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(Category_Market_Share__market_share_pct)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Category_Market_Share__product_category",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 26,
+            "width": 12,
+            "height": 7
+          }
         }
       ],
       "pageType": "PAGE_TYPE_CANVAS",
@@ -6146,9 +6901,506 @@
             "width": 6,
             "height": 3
           }
+        },
+        {
+          "widget": {
+            "name": "filter_fx_rate",
+            "queries": [
+              {
+                "name": "dashboards/01f07c1792661479a53dec98d8b3f61b/datasets/4a2722c7a1324630a2ef169d5a9f0c3f_fx_rate",
+                "query": {
+                  "datasetName": "select_fx_rate",
+                  "fields": [
+                    {
+                      "name": "fx_rate",
+                      "expression": "`fx_rate`"
+                    },
+                    {
+                      "name": "fx_rate_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/01f07c1792661479a53dec98d8b3f61b/datasets/01f1b8bdf2e517f587eba4cde2d605ca_fx_rate",
+                "query": {
+                  "datasetName": "agg_revenue_daily",
+                  "parameters": [
+                    {
+                      "name": "fx_rate",
+                      "keyword": "fx_rate"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "FX Rate (INR/USD)"
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "fx_rate",
+                    "queryName": "dashboards/01f07c1792661479a53dec98d8b3f61b/datasets/4a2722c7a1324630a2ef169d5a9f0c3f_fx_rate"
+                  },
+                  {
+                    "parameterName": "fx_rate",
+                    "queryName": "parameter_dashboards/01f07c1792661479a53dec98d8b3f61b/datasets/01f1b8bdf2e517f587eba4cde2d605ca_fx_rate"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 4,
+            "height": 3
+          }
         }
       ],
       "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "kpi_definitions",
+      "displayName": "KPI Definitions",
+      "layout": [
+        {
+          "widget": {
+            "name": "header",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## KPI Definitions\n",
+                "This page documents all Key Performance Indicators (KPIs) used across the Revenue, Customer, and Product dashboards. Each KPI lists its name, formula, source table, and business definition.\n",
+                "\n",
+                "**Source Schema:** `salesrevenuecustomeranalyticsknk.gold`"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "fact_sales_kpis",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Fact Sales KPIs (Source: `fact_sales`)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Total Revenue | `SUM(net_sales)` | Total net sales revenue across all transactions |\n",
+                "| Total Gross Sales | `SUM(gross_amount_usd)` | Total gross sales before discounts and taxes |\n",
+                "| Total Profit | `SUM(profit_amount)` | Total profit (revenue minus cost) |\n",
+                "| Total Cost | `SUM(cost_amount)` | Total cost of goods sold |\n",
+                "| Total Discount | `SUM(discount_usd)` | Total discount amount applied |\n",
+                "| Total Tax | `SUM(tax_usd)` | Total tax collected on transactions |\n",
+                "| Total Quantity Sold | `SUM(quantity)` | Total units sold across all transactions |\n",
+                "| Total Transactions | `COUNT(1)` | Count of all sales transaction records |\n",
+                "| Total Orders | `COUNT(DISTINCT order_id)` | Count of unique orders |\n",
+                "| Total Customers | `COUNT(DISTINCT customer_key)` | Count of unique customers |\n",
+                "| Total Products | `COUNT(DISTINCT product_key)` | Count of unique products sold |\n",
+                "| Total Sales Reps | `COUNT(DISTINCT sales_rep_key)` | Count of unique sales representatives |\n",
+                "| Avg Order Value | `SUM(net_sales) / COUNT(DISTINCT order_id)` | Average revenue per order |\n",
+                "| Profit Margin | `SUM(profit_amount) / SUM(net_sales)` | Profit as a percentage of revenue |\n",
+                "| Discount Rate | `SUM(discount_usd) / SUM(gross_amount_usd)` | Discount as a percentage of gross sales |\n",
+                "| Avg Selling Price | `SUM(net_sales) / SUM(quantity)` | Average price per unit sold |\n",
+                "| Revenue Per Customer | `SUM(net_sales) / COUNT(DISTINCT customer_key)` | Average revenue generated per customer |"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 12,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "revenue_kpis",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Daily Revenue KPIs (Source: `agg_revenue_daily`)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Revenue (USD) | `SUM(revenue_usd)` | Daily revenue aggregated by region and product category |\n",
+                "| Profit (USD) | `SUM(profit_usd)` | Daily profit aggregated by region and product category |\n",
+                "| Units Sold | `SUM(units_sold)` | Total units sold per day |\n",
+                "| Orders | `SUM(orders)` | Total orders per day |\n",
+                "| Line Items | `SUM(line_items)` | Total line items per day |\n",
+                "\n",
+                "**Dimensions:** Calendar Date, Region Name, Product Category, Transaction Status"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "customer_kpis",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Monthly Customer KPIs (Source: `agg_customer_monthly`)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Revenue (USD) | `SUM(revenue_usd)` | Monthly revenue by customer segment and type |\n",
+                "| Profit (USD) | `SUM(profit_usd)` | Monthly profit by customer segment |\n",
+                "| Orders | `SUM(orders)` | Total orders per month |\n",
+                "| Units Sold | `SUM(units_sold)` | Total units sold per month |\n",
+                "| Line Items | `SUM(line_items)` | Total line items per month |\n",
+                "| New Customers | `SUM(CASE WHEN is_new_customer THEN 1 ELSE 0)` | Count of first-time customers per month |\n",
+                "\n",
+                "**Dimensions:** Year-Month, Customer Segment, Customer Type, Country, Region, Is New Customer"
+              ]
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 13,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "segmentation_kpis",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Customer Segmentation KPIs (Source: `customer_segmentation`)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Total Lifetime Revenue | `SUM(lifetime_revenue)` | Total lifetime revenue per customer |\n",
+                "| Avg Lifetime Revenue | `AVG(lifetime_revenue)` | Average lifetime revenue across all customers |\n",
+                "| Customer Count | `COUNT(1)` | Count of customers in each segment |\n",
+                "\n",
+                "**Dimensions:** Customer Segment Value, Customer Name\n",
+                "\n",
+                "---\n",
+                "### Derived SQL Datasets (Semantic Model)\n",
+                "\n",
+                "| Dataset | Source | Purpose |\n",
+                "| --- | --- | --- |\n",
+                "| Top 10 Products by Sales | SQL query on `agg_revenue_daily` | Ranked product revenue |\n",
+                "| Bottom 10 Products by Revenue | SQL query on `agg_revenue_daily` | Underperforming products |\n",
+                "| Top 10 Customers by Sales | SQL query on `fact_sales` + dimensions | Ranked customer revenue |\n",
+                "| Revenue Growth | SQL query on `agg_revenue_daily` | Period-over-period growth % |\n",
+                "| Customer Metrics | SQL query on `agg_customer_monthly` | Returning customers, purchase frequency |"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 21,
+            "width": 12,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "dimension_kpis",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Dimension & Auxiliary KPIs\n",
+                "\n",
+                "#### Product Dimension (Source: `dim_product`)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Product Count | COUNT(1) | Total active products in the catalog (filtered: is_current = true) |\n",
+                "\n",
+                "**Dimensions:** Product Key, Product Name, Product Category, Product Subcategory, Brand, Product Status\n",
+                "\n",
+                "#### Customer Dimension (Source: `dim_customer`)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Total Customer Count | COUNT(1) | Total number of customers in the dimension table |\n",
+                "| Active Customer Count | SUM(CASE WHEN is_active THEN 1 ELSE 0) | Count of currently active customers |\n",
+                "\n",
+                "**Dimensions:** Customer Key, Customer Name, Customer Segment, Customer Type\n",
+                "\n",
+                "#### Revenue Growth (Source: SQL on `agg_revenue_daily`)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Revenue Growth % | (current_revenue - prior_revenue) / prior_revenue * 100 | Period-over-period revenue growth percentage |\n",
+                "\n",
+                "#### Customer Metrics (Source: SQL on `agg_customer_monthly`)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Returning Customers | COUNT(DISTINCT customer_key WHERE is_new_customer = false) | Customers who placed orders in prior months |\n",
+                "| Avg Purchase Frequency | COUNT(DISTINCT order_id) / COUNT(DISTINCT customer_key) | Average number of orders per customer |\n",
+                "\n",
+                "#### Region Dimension (Source: `dim_region`)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Region Count | COUNT(DISTINCT region_name) | Total number of sales regions |\n",
+                "| Country Count | COUNT(DISTINCT country) | Total number of countries served |\n",
+                "\n",
+                "**Dimensions:** Region Key, Region Name, Country"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 31,
+            "width": 12,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "ranking_kpis",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Ranking & Leaderboard KPIs\n",
+                "\n",
+                "#### Top 10 Products by Revenue (Source: SQL on `agg_revenue_daily`)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Product Revenue | SUM(revenue_usd) | Total revenue for each top-10 product |\n",
+                "| Quantity Sold | SUM(quantity_sold) | Total units sold for each top-10 product |\n",
+                "\n",
+                "**Dimensions:** Product Name (ranked by revenue, LIMIT 10)\n",
+                "\n",
+                "#### Bottom 10 Products by Revenue (Source: SQL on `agg_revenue_daily`)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Product Revenue | SUM(revenue_usd) | Total revenue for each bottom-10 product |\n",
+                "\n",
+                "**Dimensions:** Product Name (ranked ascending by revenue, LIMIT 10)\n",
+                "\n",
+                "#### Top 10 Customers by Sales (Source: SQL on `fact_sales` + dimensions)\n",
+                "\n",
+                "| KPI Name | Formula | Definition |\n",
+                "| --- | --- | --- |\n",
+                "| Customer Revenue | SUM(revenue_usd) | Total revenue for each top-10 customer |\n",
+                "| Customer Orders | SUM(orders) | Total orders for each top-10 customer |\n",
+                "\n",
+                "**Dimensions:** Customer Name, Customer Segment, Customer Type (ranked by revenue, LIMIT 10)"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 41,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "suggested_kpis",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Suggested Additional KPIs\n",
+                "\n",
+                "These KPIs are not yet implemented but could enrich the dashboard:\n",
+                "\n",
+                "| KPI Name | Proposed Formula | Source | Business Value |\n",
+                "| --- | --- | --- | --- |\n",
+                "| Customer Retention Rate | Returning / (Returning + New) * 100 | agg_customer_monthly | Measures loyalty and repeat business |\n",
+                "| Revenue Concentration (Top N) | Top 10 Revenue / Total Revenue * 100 | fact_sales | Identifies revenue dependency on key accounts |\n",
+                "| Avg Order Size | SUM(quantity) / COUNT(DISTINCT order_id) | fact_sales | Average units per order |\n",
+                "| Gross Margin | (Gross Sales - Cost) / Gross Sales * 100 | fact_sales | Profitability before discounts |\n",
+                "| Tax Rate | SUM(tax_usd) / SUM(net_sales) * 100 | fact_sales | Effective tax rate on sales |\n",
+                "| Customer Lifetime Value | AVG(lifetime_revenue) by tenure cohort | customer_segmentation | Value of long-term relationships |\n",
+                "| Repeat Purchase Rate | Customers with >1 order / Total * 100 | fact_sales | Percentage of customers who reorder |\n",
+                "| Sales Rep Productivity | SUM(net_sales) / COUNT(DISTINCT sales_rep_key) | fact_sales | Average revenue per sales rep |\n",
+                "| Category Market Share | Category Revenue / Total Revenue * 100 | agg_revenue_daily | Revenue contribution by category |\n",
+                "| Revenue per Region | SUM(net_sales) / COUNT(DISTINCT region_key) | fact_sales | Average revenue per region |\n",
+                "| Net Sales per Line Item | SUM(net_sales) / SUM(line_items) | agg_revenue_daily | Average value per line item |\n",
+                "| Profit per Unit | SUM(profit_amount) / SUM(quantity) | fact_sales | Profit margin per unit sold |"
+              ]
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 41,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_summary",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### KPI Summary by Dashboard Page\n",
+                "\n",
+                "| Dashboard Page | KPIs Used | Primary Sources |\n",
+                "| --- | --- | --- |\n",
+                "| Revenue Dashboard | 20 counters + 7 charts | fact_sales, agg_revenue_daily, agg_customer_monthly, customer_segmentation |\n",
+                "| Customer Dashboard | 6 counters + 7 charts | dim_customer, agg_customer_monthly, customer_segmentation, fact_sales |\n",
+                "| Product Dashboard | 5 counters + 5 charts | dim_product, fact_sales, agg_revenue_daily |\n",
+                "\n",
+                "**Total Documented KPIs:** 35 implemented + 12 suggested = **47 KPI definitions**"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 51,
+            "width": 12,
+            "height": 7
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "semantic_datasets",
+      "displayName": "Semantic & Reporting Datasets",
+      "layout": [
+        {
+          "widget": {
+            "name": "header",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Semantic & Reporting Datasets\n",
+                "This page documents the semantic model, reporting datasets (local metric views), and the relationship graph connecting source tables in the `salesrevenuecustomeranalyticsknk.gold` schema."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "metric_views",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Local Metric View Datasets (Semantic Layer)\n",
+                "\n",
+                "| Dataset | Source Table | Type | Dimensions | Measures |\n",
+                "| --- | --- | --- | --- | --- |\n",
+                "| Fact Sales KPIs | `gold.fact_sales` | Local Metric View | transaction_date, transaction_status, currency, product_key, customer_key, region_key, sales_rep_key | total_revenue, total_gross_sales, total_profit, total_cost, total_discount, total_tax, total_quantity, total_transactions, total_orders, total_customers, total_products, total_sales_reps, avg_order_value, profit_margin, discount_rate, avg_selling_price, revenue_per_customer |\n",
+                "| Daily Revenue KPIs | `gold.agg_revenue_daily` | Local Metric View | calendar_date, region_name, product_category, transaction_status | revenue_usd, profit_usd, units_sold, orders, line_items |\n",
+                "| Monthly Customer KPIs | `gold.agg_customer_monthly` | Local Metric View | year_month, customer_segment, customer_type, country, region_name, is_new_customer | revenue_usd, profit_usd, orders, units_sold, line_items, new_customers |\n",
+                "| Customer Segmentation KPIs | `gold.customer_segmentation` | Local Metric View | customer_segment_value, customer_name | total_lifetime_revenue, avg_lifetime_revenue, customer_count |\n",
+                "| Product Dimension | `gold.dim_product` | Local Metric View | product_key, product_name, product_category, product_subcategory, brand, product_status | product_count |\n",
+                "| Customer Dimension | `gold.dim_customer` | Local Metric View | customer_key, customer_name, customer_segment, customer_type | total_customer_count, active_customer_count |\n",
+                "| Region Dimension | `gold.dim_region` | Local Metric View | region_key, region_name, country | — |"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 12,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "relationships",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Relationship Graph (Semantic Model)\n",
+                "\n",
+                "The relationship graph connects datasets through join conditions, enabling cross-entity analysis without writing JOINs in queries.\n",
+                "\n",
+                "| Relationship | Left Entity | Right Entity | Join Condition | Cardinality |\n",
+                "| --- | --- | --- | --- | --- |\n",
+                "| relationship_0 | Fact Sales KPIs | Product Dimension | `Fact_Sales_KPIs.product_key = Product_Dimension.product_key` | Many-to-One |\n",
+                "| relationship_1 | Fact Sales KPIs | Customer Dimension | `Fact_Sales_KPIs.customer_key = Customer_Dimension.customer_key` | Many-to-One |\n",
+                "| relationship_2 | Fact Sales KPIs | Region Dimension | `Fact_Sales_KPIs.region_key = Region_Dimension.region_key` | Many-to-One |\n",
+                "\n",
+                "**Star Schema Pattern:** `fact_sales` is the central fact table, joined to dimension tables (`dim_product`, `dim_customer`, `dim_region`) via surrogate keys."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "sql_datasets",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### SQL-Based Reporting Datasets\n",
+                "\n",
+                "These datasets are built with raw SQL queries and power specialized widgets:\n",
+                "\n",
+                "| Dataset | Source | Purpose |\n",
+                "| --- | --- | --- |\n",
+                "| Top 10 Products | `agg_revenue_daily` | Top 10 products ranked by revenue and quantity |\n",
+                "| Bottom 10 Products | `agg_revenue_daily` | Bottom 10 products by revenue |\n",
+                "| Top 10 Customers by Sales | `fact_sales` + dimensions | Top 10 customers with name, segment, type, revenue, orders |\n",
+                "| Revenue Growth | `agg_revenue_daily` | Period-over-period revenue growth percentage |\n",
+                "| Customer Metrics | `agg_customer_monthly` | Returning customers, average purchase frequency |"
+              ]
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 13,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "global_filters",
+            "multilineTextboxSpec": {
+              "lines": [
+                "### Global Filters (Cross-Page)\n",
+                "\n",
+                "| Filter | Type | Bound Dataset | Field |\n",
+                "| --- | --- | --- | --- |\n",
+                "| Date Range | Date Range Picker | Daily Revenue KPIs | `calendar_date` |\n",
+                "| Region | Multi-Select | Region Dimension | `region_name` |\n",
+                "| Country | Multi-Select | Region Dimension | `country` |\n",
+                "| Customer Segment | Multi-Select | Customer Dimension | `customer_segment` |\n",
+                "| Product Category | Multi-Select | Daily Revenue KPIs | `product_category` |\n",
+                "\n",
+                "All global filters apply across every dashboard page simultaneously, enabling consistent filtering of Revenue, Customer, and Product analytics."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 23,
+            "width": 12,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
       "layoutVersion": "GRID_V1"
     }
   ],
